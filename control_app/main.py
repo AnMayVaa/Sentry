@@ -1,7 +1,10 @@
 import sys
+import locale
+locale.setlocale(locale.LC_ALL, 'C') # Force English numerals
+
 print("Starting main.py")
 try:
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QComboBox, QLabel
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QComboBox, QLabel, QGroupBox
     from PyQt6.QtCore import QTimer
     import pyqtgraph as pg
     import numpy as np
@@ -39,66 +42,110 @@ class CSIVisualizerApp(QMainWindow):
         self.timer.start(30) # ~33fps refresh rate
         
     def init_ui(self):
-        from PyQt6.QtWidgets import QDoubleSpinBox
+        from PyQt6.QtWidgets import QDoubleSpinBox, QGroupBox, QFrame
+        from PyQt6.QtCore import Qt
+        
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        main_layout = QHBoxLayout(central_widget)
         
-        # Control Panel
-        control_layout = QHBoxLayout()
+        # --- LEFT PANEL: CONTROLS ---
+        left_panel = QVBoxLayout()
         
+        # 1. Connection Group
+        conn_group = QGroupBox("1. Hardware Connection")
+        conn_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        conn_layout = QVBoxLayout()
+        
+        port_row = QHBoxLayout()
+        port_row.addWidget(QLabel("COM Port:"))
         self.port_combo = QComboBox()
         self.refresh_ports()
+        port_row.addWidget(self.port_combo)
         
-        self.btn_refresh = QPushButton("Refresh Ports")
+        self.btn_refresh = QPushButton("Refresh")
         self.btn_refresh.clicked.connect(self.refresh_ports)
+        port_row.addWidget(self.btn_refresh)
+        conn_layout.addLayout(port_row)
         
-        self.btn_connect = QPushButton("Connect")
+        self.btn_connect = QPushButton("Connect Receiver")
+        self.btn_connect.setMinimumHeight(35)
+        self.btn_connect.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; border-radius: 4px;")
         self.btn_connect.clicked.connect(self.toggle_connection)
+        conn_layout.addWidget(self.btn_connect)
         
-        self.lbl_status = QLabel("Disconnected")
+        self.lbl_status = QLabel("Status: Disconnected")
+        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        conn_layout.addWidget(self.lbl_status)
+        conn_group.setLayout(conn_layout)
+        left_panel.addWidget(conn_group)
         
-        # Data recording controls
-        self.btn_record = QPushButton("Start Recording")
+        # 2. Experiment / Recording Group
+        rec_group = QGroupBox("2. Data Collection")
+        rec_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        rec_layout = QVBoxLayout()
+        
+        self.btn_record = QPushButton("Start Recording CSV")
+        self.btn_record.setMinimumHeight(35)
         self.btn_record.clicked.connect(self.toggle_recording)
         self.btn_record.setEnabled(False)
         self.is_recording = False
+        rec_layout.addWidget(self.btn_record)
+        rec_group.setLayout(rec_layout)
+        left_panel.addWidget(rec_group)
         
-        # Movement Detection Controls
-        self.history = []
-        self.is_moving = False
-        self.current_threshold = 1.5
+        # 3. AI Monitor Group
+        ai_group = QGroupBox("3. AI Fall Detection Monitor")
+        ai_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        ai_layout = QVBoxLayout()
         
+        thresh_row = QHBoxLayout()
+        thresh_row.addWidget(QLabel("Variance Threshold:"))
         self.spin_threshold = QDoubleSpinBox()
         self.spin_threshold.setRange(0.1, 20.0)
         self.spin_threshold.setSingleStep(0.1)
-        self.spin_threshold.setValue(1.5)
+        self.spin_threshold.setValue(2.0)
+        self.current_threshold = 2.0
         self.spin_threshold.valueChanged.connect(self.update_threshold)
+        thresh_row.addWidget(self.spin_threshold)
+        ai_layout.addLayout(thresh_row)
+        
+        self.history = []
+        self.is_moving = False
         
         self.lbl_movement = QLabel("STATIC")
-        self.lbl_movement.setStyleSheet("background-color: green; color: white; font-size: 20px; font-weight: bold; padding: 5px;")
+        self.lbl_movement.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_movement.setStyleSheet("background-color: #27ae60; color: white; font-size: 22px; font-weight: bold; padding: 15px; border-radius: 5px;")
+        ai_layout.addWidget(self.lbl_movement)
+        ai_group.setLayout(ai_layout)
+        left_panel.addWidget(ai_group)
         
-        control_layout.addWidget(QLabel("COM Port:"))
-        control_layout.addWidget(self.port_combo)
-        control_layout.addWidget(self.btn_refresh)
-        control_layout.addWidget(self.btn_connect)
-        control_layout.addWidget(self.btn_record)
-        control_layout.addWidget(QLabel("Threshold:"))
-        control_layout.addWidget(self.spin_threshold)
-        control_layout.addWidget(self.lbl_movement)
-        control_layout.addWidget(self.lbl_status)
-        control_layout.addStretch()
+        # Quick Guide
+        guide_label = QLabel(
+            "<h3>📌 Quick Guide</h3>"
+            "<ul>"
+            "<li><b>Connect</b> to the RX node (ESP32).</li>"
+            "<li><b>Threshold:</b> Controls sensitivity between Static and Movement.</li>"
+            "<li><b>Recording:</b> Saves CSI data to <code>/data</code> folder for ML training.</li>"
+            "<li><b>Test Fall:</b> Walk, Fall, then lay completely still for 3s to trigger SOS!</li>"
+            "</ul>"
+        )
+        guide_label.setWordWrap(True)
+        guide_label.setStyleSheet("background-color: #f1f2f6; padding: 10px; border-radius: 5px; margin-top: 10px;")
+        left_panel.addWidget(guide_label)
         
-        main_layout.addLayout(control_layout)
+        left_panel.addStretch()
+        main_layout.addLayout(left_panel, 1) # 1 part width for controls
         
-        # Plot
-        self.plot_widget = pg.PlotWidget(title="CSI Subcarrier Amplitude")
-        self.plot_widget.setYRange(0, 50) # Rough amplitude range, adjust as needed
+        # --- RIGHT PANEL: PLOT ---
+        self.plot_widget = pg.PlotWidget(title="Live CSI Subcarrier Amplitude (52 Ch)")
+        self.plot_widget.setYRange(0, 60) 
         self.plot_widget.setLabel('left', 'Amplitude')
-        self.plot_widget.setLabel('bottom', 'Subcarrier Index')
-        self.curve = self.plot_widget.plot(pen='y')
+        self.plot_widget.setLabel('bottom', 'Time (Frames)')
+        self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        self.curve = self.plot_widget.plot(pen=pg.mkPen(color='c', width=2))
         
-        main_layout.addWidget(self.plot_widget)
+        main_layout.addWidget(self.plot_widget, 3) # 3 parts width for plot
 
     def update_threshold(self, value):
         self.current_threshold = value
