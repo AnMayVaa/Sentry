@@ -144,10 +144,21 @@
             }
         });
 
-        // Setup WebSocket
+        // Setup WebSocket for Reverse Proxy
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // Connect directly to the host that served this HTML file, on port 8765
-        const ws = new WebSocket(`${wsProtocol}//${window.location.hostname}:8765`);
+        
+        // If you are accessing via csi.ohmpatumwan.com (HTTPS), it will connect to wss://csi.ohmpatumwan.com/ws
+        // If you are accessing via local IP (HTTP), it will connect to ws://192.168.x.x/ws (or 8765 if proxy fails)
+        // Note: For local testing without a proxy, you might need to specify the port: `${wsProtocol}//${window.location.hostname}:8765`
+        // But for your domain proxy, this is correct:
+        let wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+        
+        // Fallback for local IP testing (no proxy)
+        if (window.location.hostname.startsWith("192.") || window.location.hostname === "localhost") {
+            wsUrl = `${wsProtocol}//${window.location.hostname}:8765`;
+        }
+        
+        const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
             document.getElementById('connection-status').innerText = '🟢 Connected to Sentry Brain';
