@@ -1,10 +1,17 @@
 import sys
+import os
 import time
+import json
 import numpy as np
 import pandas as pd
 import joblib
 from collections import Counter
 import threading
+import asyncio
+import websockets
+import http.server
+import socketserver
+
 import serial.tools.list_ports
 from serial_reader import SerialReader
 from train_model import extract_features
@@ -31,21 +38,71 @@ class HeadlessBrain:
         self.current_state = 0 # 0=STATIC, 1=MOVEMENT, 2=FALL
         
         self.reader = SerialReader(self.port, 460800, self.data_received)
+        
+        # IoT Server Variables
+        self.connected_clients = set()
+        self.loop = None
 
+    # --- WEBSOCKET SERVER LOGIC ---
+    async def ws_handler(self, websocket):
+        self.connected_clients.add(websocket)
+        print(f"[IOT] New Web Dashboard Connected! ({len(self.connected_clients)} total)")
+        try:
+            async for message in websocket:
+                pass # We don't expect incoming messages, just outgoing broadcasts
+        finally:
+            self.connected_clients.remove(websocket)
+            print(f"[IOT] Web Dashboard Disconnected. ({len(self.connected_clients)} remaining)")
+
+    async def broadcast_ws(self, payload):
+        if self.connected_clients:
+            message = json.dumps(payload)
+            websockets.broadcast(self.connected_clients, message)
+
+    def start_ws_server(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        
+        start_server = websockets.serve(self.ws_handler, "0.0.0.0", 8765)
+        print("[INFO] WebSocket Server running on port 8765")
+        
+        self.loop.run_until_complete(start_server)
+        self.loop.run_forever()
+
+    # --- HTTP SERVER LOGIC ---
+    def start_http_server(self):
+        # Serve the /dashboard folder
+        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
+        os.chdir(dashboard_dir)
+        handler = http.server.SimpleHTTPRequestHandler
+        # Handle Address already in use
+        socketserver.TCPServer.allow_reuse_address = True
+        try:
+            with socketserver.TCPServer(("0.0.0.0", 8000), handler) as httpd:
+                print("[INFO] HTTP Dashboard serving at port 8000 (Open this in your iPad/Phone)")
+                httpd.serve_forever()
+        except Exception as e:
+            print(f"[ERROR] HTTP Server failed to start: {e}")
+
+    # --- MAIN STARTUP ---
     def start(self):
         print(f"[INFO] Connecting to {self.port}...")
         if self.reader.connect():
             print(f"[SUCCESS] Connected to {self.port}! Listening for CSI data...")
-            print(f"[INFO] Variance Threshold set to {self.threshold}")
+            
+            # Start HTTP Server in background thread
+            threading.Thread(target=self.start_http_server, daemon=True).start()
+            
+            # Start WebSocket Server in main thread (blocks forever)
             try:
-                while True:
-                    time.sleep(1) # Keep main thread alive
+                self.start_ws_server()
             except KeyboardInterrupt:
                 print("\n[INFO] Shutting down...")
                 self.reader.disconnect()
         else:
             print("[ERROR] Connection failed. Check USB connection and permissions.")
 
+    # --- CSI DATA PROCESSING ---
     def data_received(self, amplitudes, rssi):
         current_time = time.time()
         
@@ -53,12 +110,10 @@ class HeadlessBrain:
         if isinstance(amplitudes, str) and amplitudes == "SOS":
             print(f"[{time.strftime('%H:%M:%S')}] 🚨 SOS BUTTON PRESSED! 🚨")
             if current_time - self.last_line_alert_time > 60.0:
-                print("[ACTION] Sending Emergency LINE Alert...")
                 threading.Thread(target=send_fall_alert, daemon=True).start()
                 self.last_line_alert_time = current_time
             return
 
-        # Movement Detection Logic
         self.history.append(amplitudes)
         if len(self.history) > 45: # 1.5 seconds at 30Hz
             self.history.pop(0)
@@ -80,7 +135,7 @@ class HeadlessBrain:
                 
             # Debounce Logic
             self.prediction_history.append(raw_pred)
-            if len(self.prediction_history) > 15: # 0.5 seconds buffer
+            if len(self.prediction_history) > 15:
                 self.prediction_history.pop(0)
                 
             mode_pred = Counter(self.prediction_history).most_common(1)[0][0]
@@ -89,36 +144,41 @@ class HeadlessBrain:
             if mode_pred == 2:
                 self.potential_fall_time = current_time
                 
-            # Check for confirmed fall (Impact followed by Static)
             if (current_time - self.potential_fall_time < 3.0) and mode_pred == 0:
                 if current_time - self.last_line_alert_time > 60.0:
                     print(f"\n[{time.strftime('%H:%M:%S')}] 🚨 FALL DETECTED! CONFIRMED STATIC POSTURE! 🚨")
-                    print("[ACTION] Sending Emergency LINE Alert...")
                     threading.Thread(target=send_fall_alert, daemon=True).start()
                     self.last_line_alert_time = current_time
             
-            # State Logging (Only print when state changes to avoid spam)
-            new_state = 1 if mode_pred == 2 else mode_pred # Don't log momentary 2 as 'fall' unless confirmed
+            new_state = 1 if mode_pred == 2 else mode_pred 
             if current_time - self.last_line_alert_time < 3.0:
-                new_state = 2 # Latch fall state for logging
+                new_state = 2 
                 
             if new_state != self.current_state:
                 state_names = {0: "🟢 STATIC", 1: "🟠 MOVEMENT", 2: "🔴 FALL DETECTED"}
                 print(f"[{time.strftime('%H:%M:%S')}] STATE CHANGE: {state_names[new_state]} (Var: {current_variance:.2f})")
                 self.current_state = new_state
 
+            # --- IOT BROADCAST ---
+            if self.loop and self.loop.is_running():
+                payload = {
+                    "state": self.current_state,
+                    "variance": current_variance,
+                    "threshold": self.threshold,
+                    "amplitudes": amplitudes
+                }
+                asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
+
 if __name__ == "__main__":
     print("=======================================")
-    print(" SENTRY: Edge Computing CSI Processor  ")
+    print(" SENTRY: IoT Web Server Processor      ")
     print("=======================================")
     
-    # Auto-detect ports if none specified
     ports = serial.tools.list_ports.comports()
     if not ports:
         print("[ERROR] No serial ports found. Is the ESP32 plugged in?")
         sys.exit(1)
         
-    # Prefer /dev/ttyUSB0 (Linux) or COM (Windows)
     target_port = ports[0].device
     for p in ports:
         if "USB" in p.device:

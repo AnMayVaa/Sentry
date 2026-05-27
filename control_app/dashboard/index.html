@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentry IoT Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .status-container {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-align: center;
+            flex: 1;
+            margin: 0 10px;
+        }
+        #state-box {
+            font-size: 36px;
+            font-weight: bold;
+            padding: 40px;
+            border-radius: 10px;
+            background-color: #27ae60;
+            transition: background-color 0.3s;
+        }
+        .charts-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .chart-wrapper {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            height: 300px;
+        }
+        @media (min-width: 1024px) {
+            .charts-container {
+                flex-direction: row;
+            }
+            .chart-wrapper {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Sentry: Edge Compute Dashboard</h1>
+        <p id="connection-status" style="color: #f39c12;">Connecting to Wi-Fi Brain...</p>
+    </div>
+
+    <div class="status-container">
+        <div class="card" style="flex: 2;">
+            <div id="state-box">STATIC</div>
+        </div>
+        <div class="card">
+            <h3>Live Variance</h3>
+            <div id="variance-val" style="font-size: 32px; font-weight: bold;">0.00</div>
+        </div>
+    </div>
+
+    <div class="charts-container">
+        <div class="chart-wrapper">
+            <canvas id="varianceChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="rawChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Setup Charts
+        Chart.defaults.color = '#aaaaaa';
+        Chart.defaults.borderColor = '#333333';
+
+        const varCtx = document.getElementById('varianceChart').getContext('2d');
+        const varianceChart = new Chart(varCtx, {
+            type: 'line',
+            data: {
+                labels: Array(150).fill(''),
+                datasets: [{
+                    label: 'Motion Index (Variance)',
+                    data: Array(150).fill(0),
+                    borderColor: '#ff4757',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.1
+                },
+                {
+                    label: 'Threshold',
+                    data: Array(150).fill(2.0),
+                    borderColor: '#f1c40f',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    tension: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: { y: { min: 0, max: 20 } }
+            }
+        });
+
+        const rawCtx = document.getElementById('rawChart').getContext('2d');
+        const rawChart = new Chart(rawCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 52}, (_, i) => i+1),
+                datasets: [{
+                    label: '52 Subcarrier Amplitude',
+                    data: Array(52).fill(0),
+                    borderColor: '#1e90ff',
+                    borderWidth: 2,
+                    pointRadius: 1,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: { y: { min: 0, max: 60 } }
+            }
+        });
+
+        // Setup WebSocket
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // Connect directly to the host that served this HTML file, on port 8765
+        const ws = new WebSocket(`${wsProtocol}//${window.location.hostname}:8765`);
+
+        ws.onopen = () => {
+            document.getElementById('connection-status').innerText = '🟢 Connected to Sentry Brain';
+            document.getElementById('connection-status').style.color = '#2ecc71';
+        };
+
+        ws.onclose = () => {
+            document.getElementById('connection-status').innerText = '🔴 Disconnected from Sentry Brain';
+            document.getElementById('connection-status').style.color = '#e74c3c';
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Update State Box
+            const stateBox = document.getElementById('state-box');
+            if (data.state === 2) {
+                stateBox.innerText = '🚨 FALL DETECTED 🚨';
+                stateBox.style.backgroundColor = '#e74c3c';
+            } else if (data.state === 1) {
+                stateBox.innerText = 'MOVEMENT';
+                stateBox.style.backgroundColor = '#f39c12';
+            } else {
+                stateBox.innerText = 'STATIC';
+                stateBox.style.backgroundColor = '#27ae60';
+            }
+
+            // Update Variance Text
+            document.getElementById('variance-val').innerText = data.variance.toFixed(2);
+
+            // Update Variance Chart
+            let varData = varianceChart.data.datasets[0].data;
+            varData.shift();
+            varData.push(data.variance);
+            
+            // Update Threshold Line (Dynamically in case server changes it)
+            let threshData = varianceChart.data.datasets[1].data;
+            threshData.shift();
+            threshData.push(data.threshold);
+            
+            varianceChart.update();
+
+            // Update Raw Subcarriers Chart
+            rawChart.data.datasets[0].data = data.amplitudes;
+            rawChart.update();
+        };
+    </script>
+</body>
+</html>
