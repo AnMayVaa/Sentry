@@ -59,15 +59,18 @@ class HeadlessBrain:
             message = json.dumps(payload)
             websockets.broadcast(self.connected_clients, message)
 
+    async def _ws_main(self):
+        async with websockets.serve(self.ws_handler, "0.0.0.0", 8765):
+            await asyncio.Future()
+
     def start_ws_server(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        
-        start_server = websockets.serve(self.ws_handler, "0.0.0.0", 8765)
         print("[INFO] WebSocket Server running on port 8765")
-        
-        self.loop.run_until_complete(start_server)
-        self.loop.run_forever()
+        try:
+            self.loop.run_until_complete(self._ws_main())
+        except asyncio.CancelledError:
+            pass
 
     # --- HTTP SERVER LOGIC ---
     def start_http_server(self):
