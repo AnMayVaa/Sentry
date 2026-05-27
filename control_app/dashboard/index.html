@@ -17,6 +17,49 @@
             text-align: center;
             margin-bottom: 20px;
         }
+        .control-panel {
+            background-color: #1a1a1a;
+            border-radius: 10px;
+            padding: 15px 25px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border: 1px solid #333;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .control-label {
+            font-weight: bold;
+            color: #ccc;
+        }
+        select, input[type="range"] {
+            background-color: #2c2c2c;
+            color: white;
+            border: 1px solid #444;
+            padding: 8px;
+            border-radius: 5px;
+        }
+        input[type="range"] {
+            width: 150px;
+        }
+        button {
+            background-color: #2980b9;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover {
+            background-color: #3498db;
+        }
         .status-container {
             display: flex;
             justify-content: space-around;
@@ -65,6 +108,23 @@
     <div class="header">
         <h1>Sentry: Edge Compute Dashboard</h1>
         <p id="connection-status" style="color: #f39c12;">Connecting to Wi-Fi Brain...</p>
+    </div>
+
+    <!-- CONTROL PANEL -->
+    <div class="control-panel">
+        <div class="control-group">
+            <span class="control-label">ESP32 Port:</span>
+            <select id="port-select">
+                <option value="">Loading ports...</option>
+            </select>
+            <button onclick="changePort()">Connect</button>
+        </div>
+        
+        <div class="control-group">
+            <span class="control-label">Sensitivity Threshold:</span>
+            <input type="range" id="threshold-slider" min="0.1" max="10.0" step="0.1" value="2.0" onchange="changeThreshold()">
+            <span id="threshold-display" style="font-weight: bold; width: 40px;">2.0</span>
+        </div>
     </div>
 
     <div class="status-container">
@@ -146,14 +206,8 @@
 
         // Setup WebSocket for Reverse Proxy
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        
-        // If you are accessing via csi.ohmpatumwan.com (HTTPS), it will connect to wss://csi.ohmpatumwan.com/ws
-        // If you are accessing via local IP (HTTP), it will connect to ws://192.168.x.x/ws (or 8765 if proxy fails)
-        // Note: For local testing without a proxy, you might need to specify the port: `${wsProtocol}//${window.location.hostname}:8765`
-        // But for your domain proxy, this is correct:
         let wsUrl = `${wsProtocol}//${window.location.host}/ws`;
         
-        // Fallback for local IP testing (no proxy)
         if (window.location.hostname.startsWith("192.") || window.location.hostname === "localhost") {
             wsUrl = `${wsProtocol}//${window.location.hostname}:8765`;
         }
@@ -163,6 +217,8 @@
         ws.onopen = () => {
             document.getElementById('connection-status').innerText = '🟢 Connected to Sentry Brain';
             document.getElementById('connection-status').style.color = '#2ecc71';
+            // Request initial config
+            ws.send(JSON.stringify({command: "get_config"}));
         };
 
         ws.onclose = () => {
@@ -170,9 +226,48 @@
             document.getElementById('connection-status').style.color = '#e74c3c';
         };
 
+        // GUI Control Functions
+        function changeThreshold() {
+            const val = document.getElementById('threshold-slider').value;
+            document.getElementById('threshold-display').innerText = parseFloat(val).toFixed(1);
+            ws.send(JSON.stringify({command: "set_threshold", value: val}));
+        }
+
+        // Live update slider text while dragging (without spamming WS)
+        document.getElementById('threshold-slider').addEventListener('input', function() {
+            document.getElementById('threshold-display').innerText = parseFloat(this.value).toFixed(1);
+        });
+
+        function changePort() {
+            const port = document.getElementById('port-select').value;
+            if (port) {
+                ws.send(JSON.stringify({command: "set_port", port: port}));
+            }
+        }
+
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             
+            // Handle Config Payload
+            if (data.type === "config") {
+                // Update slider UI
+                document.getElementById('threshold-slider').value = data.threshold;
+                document.getElementById('threshold-display').innerText = parseFloat(data.threshold).toFixed(1);
+                
+                // Update Port Dropdown UI
+                const portSelect = document.getElementById('port-select');
+                portSelect.innerHTML = '';
+                data.available_ports.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.innerText = p;
+                    if (p === data.port) opt.selected = true;
+                    portSelect.appendChild(opt);
+                });
+                return; // Stop processing further for config packets
+            }
+            
+            // --- Live Data Parsing ---
             // Update State Box
             const stateBox = document.getElementById('state-box');
             if (data.state === 2) {

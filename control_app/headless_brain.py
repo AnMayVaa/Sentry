@@ -47,9 +47,48 @@ class HeadlessBrain:
     async def ws_handler(self, websocket):
         self.connected_clients.add(websocket)
         print(f"[IOT] New Web Dashboard Connected! ({len(self.connected_clients)} total)")
+        
+        # Send initial configuration
+        ports = [p.device for p in serial.tools.list_ports.comports()]
+        init_msg = json.dumps({
+            "type": "config",
+            "threshold": self.threshold,
+            "port": self.port,
+            "available_ports": ports
+        })
+        try:
+            await websocket.send(init_msg)
+        except:
+            pass
+
         try:
             async for message in websocket:
-                pass # We don't expect incoming messages, just outgoing broadcasts
+                try:
+                    data = json.loads(message)
+                    if data.get("command") == "set_threshold":
+                        self.threshold = float(data.get("value", 2.0))
+                        print(f"[IOT] Threshold updated to {self.threshold}")
+                    elif data.get("command") == "set_port":
+                        new_port = data.get("port")
+                        print(f"[IOT] Switching COM port to {new_port}...")
+                        self.port = new_port
+                        self.reader.disconnect()
+                        self.reader = SerialReader(self.port, 460800, self.data_received)
+                        if self.reader.connect():
+                            print(f"[IOT] Successfully reconnected to {self.port}")
+                        else:
+                            print(f"[IOT] Failed to connect to {self.port}")
+                    elif data.get("command") == "get_config":
+                        ports = [p.device for p in serial.tools.list_ports.comports()]
+                        cfg_msg = json.dumps({
+                            "type": "config",
+                            "threshold": self.threshold,
+                            "port": self.port,
+                            "available_ports": ports
+                        })
+                        await websocket.send(cfg_msg)
+                except Exception as e:
+                    print(f"[IOT] Error parsing command: {e}")
         finally:
             self.connected_clients.remove(websocket)
             print(f"[IOT] Web Dashboard Disconnected. ({len(self.connected_clients)} remaining)")
