@@ -12,11 +12,12 @@ The system leverages a Custom Hardware Pipeline (ESP32), a Hybrid Sequence State
 - **Mycelium Mesh Routing:** Biologically-inspired intelligent routing protocols to ensure energy-efficient data transmission across a multi-node residential network.
 - **LINE Messaging API:** Automatically pushes beautiful, interactive Emergency Cards to caregivers via LINE when a fall is confirmed, complete with a button to dial emergency services (1669).
 - **Edge Compute Central Brain:** Deploys a Raspberry Pi 5 acting as a headless ML processor. It hosts a Unified HTTP/WebSocket Server and leverages a persistent Dockerized Cloudflare Tunnel to expose the system globally without opening router ports.
-- **Glassmorphism Live Dashboard:** A stunning, dark-mode, responsive web application that renders 15 FPS hardware-accelerated graphs of the mathematical Variance and the raw 52-subcarrier OFDM snapshot. Features a Two-Way syncing control panel to remotely toggle hardware connections and adjust AI sensitivity thresholds on the fly from any device.
+- **Universal Edge Dashboard:** A stunning, dark-mode, responsive web application that renders 15 FPS hardware-accelerated graphs of the mathematical Variance and the raw 52-subcarrier OFDM snapshot. Features a Two-Way syncing control panel to remotely toggle hardware connections ([USB Mode] vs [Wireless UDP Mode]) and adjust AI sensitivity thresholds on the fly from any device.
+- **mDNS Auto-Discovery:** The ESP32 receiver dynamically resolves the Raspberry Pi's hostname on the local network, making the wireless UDP system completely immune to DHCP IP address changes.
 
 ## Project Structure
 - `/control_app`: Contains the legacy Phase 1 Python GUI (`main.py`), ML pipeline (`train_model.py`), and LINE notifier.
-- `/Phase1.75_USB_Central_Brain`: Contains the modern headless Edge Compute backend (`headless_brain.py`) and the responsive Glassmorphism web UI (`dashboard/index.html`).
+- `/Phase2_Central_Brain`: Contains the modern headless Edge Compute backend (`headless_brain.py`) and the responsive Glassmorphism Universal Web UI (`dashboard/index.html`).
 - `/tx_node`: ESP32 Transmitter firmware (injects high-speed OFDM packets and acts as the SOS button).
 - `/rx_node`: ESP32 Receiver firmware (Promiscuous mode Wi-Fi sniffer).
 - `/docs/scripts`: Python scripts for generating academic poster graphs and running the Mycelium Simulator.
