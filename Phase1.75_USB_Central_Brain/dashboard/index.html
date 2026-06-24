@@ -228,6 +228,28 @@
             border-radius: 4px;
         }
 
+        /* Responsive Layout for iPad & Mobile */
+        @media (max-width: 1024px) {
+            body {
+                height: auto;
+                overflow-y: auto; /* Enable scrolling */
+            }
+            .status-container {
+                flex-direction: column;
+            }
+            .state-panel {
+                min-height: 200px;
+            }
+            .charts-container {
+                flex-direction: column;
+                flex: none;
+            }
+            .chart-wrapper {
+                min-height: 300px;
+            }
+        }
+
+
     </style>
 </head>
 <body>
@@ -448,10 +470,10 @@
             threshData.shift();
             threshData.push(data.threshold);
             
-            varianceChart.update();
+            varianceChart.update('none');
 
             rawChart.data.datasets[0].data = data.amplitudes;
-            rawChart.update();
+            rawChart.update('none');
         };
     </script>
 </body>
