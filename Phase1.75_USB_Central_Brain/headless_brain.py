@@ -113,21 +113,22 @@ class HeadlessBrain:
             websockets.broadcast(self.connected_clients, message)
 
     # --- UNIFIED HTTP & WEBSOCKET SERVER LOGIC ---
-    async def process_request(self, path, request_headers):
+    async def process_request(self, connection, request):
+        from websockets.http11 import Response, Headers
         import http
-        if path == "/" or path == "/index.html":
+        if request.path == "/" or request.path == "/index.html":
             dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
             index_path = os.path.join(dashboard_dir, 'index.html')
             try:
                 with open(index_path, "rb") as f:
                     content = f.read()
-                return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8")], content)
+                return Response(200, "OK", Headers([("Content-Type", "text/html; charset=utf-8")]), content)
             except Exception as e:
-                return (http.HTTPStatus.INTERNAL_SERVER_ERROR, [], str(e).encode())
-        elif path == "/ws":
+                return Response(500, "Error", Headers([]), str(e).encode())
+        elif request.path == "/ws":
             return None # Proceed to WebSocket upgrade
         else:
-            return (http.HTTPStatus.NOT_FOUND, [], b"Not Found")
+            return Response(404, "Not Found", Headers([]), b"Not Found")
 
     async def _ws_main(self):
         import http
