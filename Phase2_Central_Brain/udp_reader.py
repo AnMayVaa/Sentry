@@ -35,36 +35,44 @@ class UDPReader:
     def _read_loop(self):
         while self.running and self.sock:
             try:
-                data, addr = self.sock.recvfrom(2048)
-                line = data.decode('utf-8', errors='ignore').strip()
+                data, addr = self.sock.recvfrom(4096)
+                decoded_data = data.decode('utf-8', errors='ignore').strip()
                 
-                if line.startswith("SOS_ALERT"):
-                    if self.data_callback:
-                        self.data_callback("SOS", 0)
-                    continue
-                    
-                if line.startswith("CSI_DATA"):
-                    parts = line.split(',')
-                    if len(parts) > 4:
-                        rssi = int(parts[2])
-                        csi_len = int(parts[3])
-                        csi_raw = [int(x) for x in parts[4:] if x]
+                # A single UDP packet might contain a batch of multiple CSI frames separated by newline
+                for line in decoded_data.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
                         
-                        if len(csi_raw) >= 128:
-                            amplitudes = []
-                            for i in range(0, 128, 2):
-                                imag = csi_raw[i]
-                                real = csi_raw[i+1]
-                                amp = np.sqrt(imag**2 + real**2)
-                                amplitudes.append(amp)
-                                
-                            # Filter the 52 valid data subcarriers
-                            valid_amplitudes = amplitudes[1:28] + amplitudes[38:64]
+                    if line.startswith("SOS_ALERT"):
+                        if self.data_callback:
+                            self.data_callback("SOS", 0)
+                        continue
+                        
+                    if line.startswith("CSI_DATA"):
+                        parts = line.split(',')
+                        if len(parts) > 4:
+                            rssi = int(parts[2])
+                            csi_len = int(parts[3])
                             
-                            if self.data_callback:
-                                self.data_callback(valid_amplitudes, rssi)
-                        else:
-                            print(f"Skipping packet, CSI length too short: {len(csi_raw)}")
+                            try:
+                                csi_raw = [int(x) for x in parts[4:] if x]
+                            except ValueError:
+                                continue # Skip corrupted batched lines
+                                
+                            if len(csi_raw) >= 128:
+                                amplitudes = []
+                                for i in range(0, 128, 2):
+                                    imag = csi_raw[i]
+                                    real = csi_raw[i+1]
+                                    amp = np.sqrt(imag**2 + real**2)
+                                    amplitudes.append(amp)
+                                    
+                                # Filter the 52 valid data subcarriers
+                                valid_amplitudes = amplitudes[1:28] + amplitudes[38:64]
+                                
+                                if self.data_callback:
+                                    self.data_callback(valid_amplitudes, rssi)
             except socket.timeout:
                 continue
             except Exception as e:

@@ -89,6 +89,7 @@ void loop() {
         udp.beginPacket(dest_ip, dest_port);
         udp.print("SOS_ALERT\n");
         udp.endPacket();
+        Serial.println("SOS_ALERT");
         delay(1000); // Debounce
     }
     
@@ -105,15 +106,20 @@ void loop() {
             if (xQueueReceive(csi_queue, &pkt, 0) == pdTRUE) {
                 if (pkt.is_sos) {
                     udp.print("SOS_ALERT\n");
-                    Serial.println("Sent SOS via UDP!");
+                    Serial.println("SOS_ALERT");
                 } else {
                     udp.printf("CSI_DATA,%d,%d,%d,", pkt.mac[0], pkt.rssi, pkt.len);
+                    Serial.printf("CSI_DATA,%d,%d,%d,", pkt.mac[0], pkt.rssi, pkt.len);
                     for (int i = 0; i < pkt.len; i++) {
                         udp.print((int)pkt.buf[i]);
-                        if (i < pkt.len - 1) udp.print(",");
+                        Serial.print((int)pkt.buf[i]);
+                        if (i < pkt.len - 1) {
+                            udp.print(",");
+                            Serial.print(",");
+                        }
                     }
                     udp.print("\n");
-                    Serial.print(".");
+                    Serial.print("\n");
                 }
             }
         }

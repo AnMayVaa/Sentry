@@ -14,6 +14,7 @@ import socketserver
 
 import serial.tools.list_ports
 from serial_reader import SerialReader
+from udp_reader import UDPReader
 from ml_engine import extract_features
 from line_notifier import send_fall_alert
 
@@ -34,10 +35,13 @@ HTTP_PORT = global_config["networking"]["http_port"]
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
         self.port = port
+        self.udp_port = 5000
+        self.mode = "USB"  # 'USB' or 'UDP'
         self.threshold = threshold
         
         self.history = []
         self.prediction_history = []
+        self.last_broadcast_time = 0
         
         self.ml_model = None
         try:
@@ -51,7 +55,7 @@ class HeadlessBrain:
         self.last_line_alert_time = 0
         self.current_state = 0 # 0=STATIC, 1=MOVEMENT, 2=FALL
         
-        self.reader = SerialReader(self.port, 460800, self.data_received)
+        self.reader = None
         
         # IoT Server Variables
         self.connected_clients = set()
@@ -82,25 +86,62 @@ class HeadlessBrain:
                     if data.get("command") == "set_threshold":
                         self.threshold = float(data.get("value", 2.0))
                         print(f"[IOT] Threshold updated to {self.threshold}")
+                        await self.broadcast_config()
+                        
+                    elif data.get("command") == "set_mode":
+                        self.mode = data.get("mode", "USB")
+                        print(f"[IOT] Switching mode to {self.mode}...")
+                        if self.reader:
+                            self.reader.disconnect()
+                        if self.mode == "USB":
+                            self.reader = SerialReader(self.port, 460800, self.data_received)
+                            self.reader.connect()
+                        else:
+                            self.reader = UDPReader(self.udp_port, self.data_received)
+                            self.reader.connect()
+                        await self.broadcast_config()
+                        
                     elif data.get("command") == "set_port":
                         new_port = data.get("port")
                         print(f"[IOT] Switching COM port to {new_port}...")
                         self.port = new_port
-                        self.reader.disconnect()
-                        self.reader = SerialReader(self.port, 460800, self.data_received)
-                        if self.reader.connect():
-                            print(f"[IOT] Successfully reconnected to {self.port}")
-                        else:
-                            print(f"[IOT] Failed to connect to {self.port}")
+                        if self.reader:
+                            self.reader.disconnect()
+                        if self.mode == "USB":
+                            self.reader = SerialReader(self.port, 460800, self.data_received)
+                            if self.reader.connect():
+                                print(f"[IOT] Successfully reconnected to {self.port}")
+                            else:
+                                print(f"[IOT] Failed to connect to {self.port}")
+                                self.port = ""
+                        await self.broadcast_config()
+                        
+                    elif data.get("command") == "set_udp_port":
+                        new_port = int(data.get("port", 5000))
+                        print(f"[IOT] Switching UDP port to {new_port}...")
+                        self.udp_port = new_port
+                        if self.reader:
+                            self.reader.disconnect()
+                        if self.mode == "UDP":
+                            self.reader = UDPReader(self.udp_port, self.data_received)
+                            if self.reader.connect():
+                                print(f"[IOT] Successfully bound to UDP {self.udp_port}")
+                            else:
+                                print(f"[IOT] Failed to bind to UDP {self.udp_port}")
+                        await self.broadcast_config()
+                        
+                    elif data.get("command") == "disconnect":
+                        print("[IOT] Stopping CSI stream (Disconnecting)...")
+                        if self.reader:
+                            self.reader.disconnect()
+                        if self.mode == "USB":
+                            self.port = ""
+                        # For UDP, we don't clear the port, just stop listening.
+                        # But wait, if we stop the reader, the next connect will use it.
+                        await self.broadcast_config()
+                        
                     elif data.get("command") == "get_config":
-                        ports = [p.device for p in serial.tools.list_ports.comports()]
-                        cfg_msg = json.dumps({
-                            "type": "config",
-                            "threshold": self.threshold,
-                            "port": self.port,
-                            "available_ports": ports
-                        })
-                        await websocket.send(cfg_msg)
+                        await self.broadcast_config()
                 except Exception as e:
                     print(f"[IOT] Error parsing command: {e}")
         finally:
@@ -111,52 +152,74 @@ class HeadlessBrain:
         if self.connected_clients:
             message = json.dumps(payload)
             websockets.broadcast(self.connected_clients, message)
+            
+    async def broadcast_config(self):
+        # A helper to check if reader is actually running
+        is_running = self.reader is not None and getattr(self.reader, 'running', False)
+        
+        cfg_payload = {
+            "type": "config",
+            "mode": self.mode,
+            "threshold": self.threshold,
+            "port": self.port if is_running and self.mode == "USB" else (self.port if self.mode == "USB" else ""),
+            "udp_port": self.udp_port,
+            "is_connected": is_running,
+            "available_ports": [p.device for p in serial.tools.list_ports.comports()]
+        }
+        await self.broadcast_ws(cfg_payload)
+
+    # --- UNIFIED HTTP & WEBSOCKET SERVER LOGIC ---
+    async def process_request(self, connection, request):
+        from websockets.http11 import Response, Headers
+        import http
+        if request.path == "/" or request.path == "/index.html":
+            dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
+            index_path = os.path.join(dashboard_dir, 'index.html')
+            try:
+                with open(index_path, "rb") as f:
+                    content = f.read()
+                return Response(200, "OK", Headers([("Content-Type", "text/html; charset=utf-8")]), content)
+            except Exception as e:
+                return Response(500, "Error", Headers([]), str(e).encode())
+        elif request.path == "/ws":
+            return None # Proceed to WebSocket upgrade
+        else:
+            return Response(404, "Not Found", Headers([]), b"Not Found")
 
     async def _ws_main(self):
-        async with websockets.serve(self.ws_handler, "0.0.0.0", 8765):
+        import http
+        # Bind BOTH HTTP and WebSocket to port 8000 to easily proxy through a single Cloudflare Tunnel
+        async with websockets.serve(self.ws_handler, "0.0.0.0", 8000, process_request=self.process_request):
             await asyncio.Future()
 
     def start_ws_server(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        print("[INFO] WebSocket Server running on port 8765")
+        print("[INFO] Unified Web & WebSocket Server running on port 8000")
         try:
             self.loop.run_until_complete(self._ws_main())
         except asyncio.CancelledError:
             pass
 
-    # --- HTTP SERVER LOGIC ---
-    def start_http_server(self):
-        # Serve the /dashboard folder
-        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
-        os.chdir(dashboard_dir)
-        handler = http.server.SimpleHTTPRequestHandler
-        # Handle Address already in use
-        socketserver.TCPServer.allow_reuse_address = True
-        try:
-            with socketserver.TCPServer(("0.0.0.0", 8000), handler) as httpd:
-                print("[INFO] HTTP Dashboard serving at port 8000 (Open this in your iPad/Phone)")
-                httpd.serve_forever()
-        except Exception as e:
-            print(f"[ERROR] HTTP Server failed to start: {e}")
-
     # --- MAIN STARTUP ---
     def start(self):
-        print(f"[INFO] Connecting to {self.port}...")
+        print(f"[INFO] Initializing in {self.mode} mode...")
+        self.reader = SerialReader(self.port, 460800, self.data_received) if self.mode == "USB" else UDPReader(self.udp_port, self.data_received)
         if self.reader.connect():
-            print(f"[SUCCESS] Connected to {self.port}! Listening for CSI data...")
+            print(f"[SUCCESS] Reader Connected! Listening for CSI data...")
             
-            # Start HTTP Server in background thread
-            threading.Thread(target=self.start_http_server, daemon=True).start()
-            
-            # Start WebSocket Server in main thread (blocks forever)
+            # Start Unified Server in main thread (blocks forever)
             try:
                 self.start_ws_server()
             except KeyboardInterrupt:
                 print("\n[INFO] Shutting down...")
                 self.reader.disconnect()
         else:
-            print("[ERROR] Connection failed. Check USB connection and permissions.")
+            print("[ERROR] Initial connection failed. Starting server anyway so UI can reconfigure...")
+            try:
+                self.start_ws_server()
+            except KeyboardInterrupt:
+                pass
 
     # --- CSI DATA PROCESSING ---
     def data_received(self, amplitudes, rssi):
@@ -183,11 +246,11 @@ class HeadlessBrain:
             raw_pred = self.ml_model.predict([features])[0]
             current_variance = features[0]
             
-            # --- SENSITIVITY OVERRIDE (NOISE GATE) ---
+            # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
             if current_variance < self.threshold:
-                raw_pred = 0 # Force STATIC
+                raw_pred = 0 # STRICT GATEKEEPER: Force STATIC if variance is too low
             elif current_variance >= self.threshold and raw_pred == 0:
-                raw_pred = 1 # Force MOVEMENT
+                raw_pred = 1 # Force MOVEMENT if variance spikes
                 
             # Debounce Logic
             self.prediction_history.append(raw_pred)
@@ -215,15 +278,17 @@ class HeadlessBrain:
                 print(f"[{time.strftime('%H:%M:%S')}] STATE CHANGE: {state_names[new_state]} (Var: {current_variance:.2f})")
                 self.current_state = new_state
 
-            # --- IOT BROADCAST ---
+            # --- IOT BROADCAST (THROTTLED to ~15 FPS to prevent UI Lag) ---
             if self.loop and self.loop.is_running():
-                payload = {
-                    "state": self.current_state,
-                    "variance": current_variance,
-                    "threshold": self.threshold,
-                    "amplitudes": amplitudes
-                }
-                asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
+                if current_time - self.last_broadcast_time > 0.06: # 15 FPS Throttle
+                    payload = {
+                        "state": self.current_state,
+                        "variance": current_variance,
+                        "threshold": self.threshold,
+                        "amplitudes": amplitudes
+                    }
+                    asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
+                    self.last_broadcast_time = current_time
 
 if __name__ == "__main__":
     print("=======================================")

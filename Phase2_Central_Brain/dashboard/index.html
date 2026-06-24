@@ -4,153 +4,394 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sentry IoT Dashboard</title>
+    <!-- Modern Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #00d2ff;
+            --secondary: #3a7bd5;
+            --success: #00f260;
+            --danger: #ff416c;
+            --warning: #fbc531;
+            --text-main: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.6);
+        }
+
+        * { box-sizing: border-box; }
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212;
-            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            color: var(--text-main);
             margin: 0;
-            padding: 20px;
+            padding: 2vh 3vw;
+            min-height: 100vh;
+            overflow-x: auto; /* allow horizontal slide */
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2vh;
         }
+
+        /* Glassmorphism Classes */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* Header */
         .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .control-panel {
-            background-color: #1a1a1a;
-            border-radius: 10px;
-            padding: 15px 25px;
-            margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            border: 1px solid #333;
+            padding: 20px 30px;
         }
-        .control-group {
+        .header h1 {
+            margin: 0;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: -webkit-linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .conn-status {
+            font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 10px;
         }
-        .control-label {
-            font-weight: bold;
-            color: #ccc;
+        .pulse-dot {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
         }
-        select, input[type="range"] {
-            background-color: #2c2c2c;
-            color: white;
-            border: 1px solid #444;
-            padding: 8px;
-            border-radius: 5px;
-        }
-        input[type="range"] {
-            width: 150px;
-        }
-        button {
-            background-color: #2980b9;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: 0.2s;
-        }
-        button:hover {
-            background-color: #3498db;
-        }
-        .status-container {
+
+        /* Controls */
+        .controls-container {
             display: flex;
-            justify-content: space-around;
-            margin-bottom: 20px;
+            gap: 20px;
+            flex-wrap: wrap;
         }
-        .card {
-            background-color: #1e1e1e;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            text-align: center;
-            flex: 1;
-            margin: 0 10px;
-        }
-        #state-box {
-            font-size: 36px;
-            font-weight: bold;
-            padding: 40px;
-            border-radius: 10px;
-            background-color: #27ae60;
-            transition: background-color 0.3s;
-        }
-        .charts-container {
+        .control-card {
+            flex: 1 1 200px;
+            padding: 20px 25px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 10px;
+        }
+        .control-card label {
+            text-transform: uppercase;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+        }
+        .control-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        select, input[type="range"] {
+            background: rgba(0,0,0,0.2);
+            color: white;
+            border: 1px solid var(--glass-border);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            outline: none;
+        }
+        
+        button {
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 210, 255, 0.5);
+        }
+
+        /* Status Panels */
+        .status-container {
+            display: flex;
+            gap: 25px;
+        }
+        
+        .state-panel {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #state-box {
+            font-size: 56px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 2;
+        }
+
+        /* Fall Detected Glowing Animation */
+        @keyframes pulse-danger {
+            0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.7); }
+            70% { box-shadow: 0 0 0 40px rgba(255, 65, 108, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0); }
+        }
+        .state-fall {
+            background: linear-gradient(135deg, #ff416c, #ff4b2b) !important;
+            animation: pulse-danger 1.5s infinite;
+        }
+        .state-movement {
+            background: linear-gradient(135deg, #f2994a, #f2c94c) !important;
+        }
+        .state-static {
+            background: linear-gradient(135deg, #11998e, #38ef7d) !important;
+        }
+
+        .metric-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .metric-value {
+            font-size: 48px;
+            font-weight: 800;
+            color: var(--primary);
+            text-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+        }
+        .metric-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Charts */
+        .charts-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 25px;
+            flex: 1;
+            min-height: 0;
         }
         .chart-wrapper {
-            background-color: #1e1e1e;
+            flex: 1 1 400px; /* Flex-grow, shrink, and min-width */
+            min-width: 300px;
             padding: 20px;
-            border-radius: 10px;
-            height: 300px;
+            position: relative;
+            overflow-x: auto; /* Enable sliding for the graph */
         }
-        @media (min-width: 1024px) {
-            .charts-container {
-                flex-direction: row;
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px var(--primary);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+
+        /* Responsive Layout for iPad & Mobile */
+        @media (max-width: 1024px) {
+            body {
+                height: auto;
+                overflow-y: auto;
+                padding: 15px 15px;
+                gap: 15px;
+            }
+            .header {
+                padding: 15px 20px;
+            }
+            .header h1 {
+                font-size: 24px;
+            }
+            .control-card {
+                padding: 15px;
+            }
+            .state-panel {
+                min-height: 150px;
+                padding: 20px;
+            }
+            #state-box {
+                font-size: 42px;
+            }
+            .metric-value {
+                font-size: 36px;
             }
             .chart-wrapper {
-                flex: 1;
+                min-height: 250px;
+                padding: 15px;
+            }
+            .status-container {
+                gap: 15px;
+                flex-direction: column;
+            }
+            .charts-container {
+                gap: 15px;
             }
         }
+        
+        /* Mobile specific layout */
+        @media (max-width: 600px) {
+            .controls-container {
+                flex-direction: column;
+            }
+            .control-card {
+                flex: none; /* remove flex behavior to naturally stack */
+                width: 100%;
+            }
+        }
+        
+        /* Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            background: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            padding: 5px;
+            margin-bottom: 5px;
+        }
+        .mode-btn {
+            flex: 1;
+            text-align: center;
+            padding: 6px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-muted);
+            transition: all 0.3s;
+        }
+        .mode-btn.active {
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 2px 10px rgba(0, 210, 255, 0.3);
+        }
+
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <h1>Sentry: Edge Compute Dashboard</h1>
-        <p id="connection-status" style="color: #f39c12;">Connecting to Wi-Fi Brain...</p>
+    <!-- Header -->
+    <div class="glass header">
+        <h1>Sentry IoT <span style="color:var(--text-muted); font-size:20px; font-weight:400;">/ Edge Dashboard</span></h1>
+        <div class="conn-status">
+            <span class="pulse-dot" id="conn-dot" style="background-color: var(--warning);"></span>
+            <span id="connection-status" style="color: var(--warning);">Connecting...</span>
+        </div>
     </div>
 
-    <!-- CONTROL PANEL -->
-    <div class="control-panel">
-        <div class="control-group">
-            <span class="control-label">ESP32 Port:</span>
-            <select id="port-select">
-                <option value="">Loading ports...</option>
-            </select>
-            <button onclick="changePort()">Connect</button>
+    <!-- Controls -->
+    <div class="controls-container">
+        <div class="glass control-card">
+            <label>Hardware Connection</label>
+            <div class="mode-toggle">
+                <div class="mode-btn active" id="mode-usb" onclick="setMode('USB')">USB Serial</div>
+                <div class="mode-btn" id="mode-udp" onclick="setMode('Wireless UDP')">Wireless UDP</div>
+            </div>
+            <div class="control-row">
+                <select id="port-select" style="flex:1;">
+                    <option value="">Scanning for devices...</option>
+                </select>
+                <input type="number" id="udp-port" value="5000" style="flex:1; display:none; max-width:120px;" placeholder="Port">
+                <button id="connect-btn" onclick="toggleConnect()">Connect</button>
+            </div>
         </div>
         
-        <div class="control-group">
-            <span class="control-label">Sensitivity Threshold:</span>
-            <input type="range" id="threshold-slider" min="0.1" max="10.0" step="0.1" value="2.0" onchange="changeThreshold()">
-            <span id="threshold-display" style="font-weight: bold; width: 40px;">2.0</span>
+        <div class="glass control-card">
+            <label>Sensitivity Threshold (Variance Trigger)</label>
+            <div class="control-row">
+                <input type="range" id="threshold-slider" min="0.1" max="10.0" step="0.1" value="2.0" onchange="changeThreshold()">
+                <div style="background: rgba(0,0,0,0.2); padding: 8px 15px; border-radius: 8px; font-weight: bold; width: 45px; text-align: center;">
+                    <span id="threshold-display">2.0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass control-card" style="flex: 1.5;">
+            <label>Quick Guide</label>
+            <div style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 5px;">
+                1. Select your <b>ESP32 USB port</b> and click Connect.<br>
+                2. Adjust <b>Threshold</b> to tune sensitivity. If variance falls below this line, it forces STATIC.<br>
+                3. For best accuracy, ensure RX and TX antennas have clear line of sight.
+            </div>
         </div>
     </div>
 
+    <!-- Status Displays -->
     <div class="status-container">
-        <div class="card" style="flex: 2;">
+        <div class="glass state-panel state-static" id="state-panel">
             <div id="state-box">STATIC</div>
+            <div style="color: rgba(255,255,255,0.8); margin-top: 10px; font-weight: 600; letter-spacing: 2px;">LIVE INFERENCE</div>
         </div>
-        <div class="card">
-            <h3>Live Variance</h3>
-            <div id="variance-val" style="font-size: 32px; font-weight: bold;">0.00</div>
+        
+        <div class="glass metric-panel">
+            <div class="metric-label">Temporal Variance</div>
+            <div class="metric-value" id="variance-val">0.00</div>
         </div>
     </div>
 
+    <!-- Charts -->
     <div class="charts-container">
-        <div class="chart-wrapper">
-            <canvas id="varianceChart"></canvas>
+        <div class="glass chart-wrapper">
+            <div style="min-width: 600px; height: 100%;">
+                <canvas id="varianceChart"></canvas>
+            </div>
         </div>
-        <div class="chart-wrapper">
-            <canvas id="rawChart"></canvas>
+        <div class="glass chart-wrapper">
+            <div style="min-width: 600px; height: 100%;">
+                <canvas id="rawChart"></canvas>
+            </div>
         </div>
     </div>
 
     <script>
-        // Setup Charts
-        Chart.defaults.color = '#aaaaaa';
-        Chart.defaults.borderColor = '#333333';
+        // Chart JS Global Styling for Dark Theme
+        Chart.defaults.color = 'rgba(255, 255, 255, 0.6)';
+        Chart.defaults.font.family = 'Inter';
+        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
 
+        // 1. Variance Chart
         const varCtx = document.getElementById('varianceChart').getContext('2d');
         const varianceChart = new Chart(varCtx, {
             type: 'line',
@@ -159,18 +400,21 @@
                 datasets: [{
                     label: 'Motion Index (Variance)',
                     data: Array(150).fill(0),
-                    borderColor: '#ff4757',
+                    borderColor: '#00d2ff',
+                    backgroundColor: 'rgba(0, 210, 255, 0.1)',
                     borderWidth: 2,
                     pointRadius: 0,
-                    tension: 0.1
+                    fill: true,
+                    tension: 0.3
                 },
                 {
                     label: 'Threshold',
                     data: Array(150).fill(2.0),
-                    borderColor: '#f1c40f',
+                    borderColor: '#fbc531',
                     borderWidth: 2,
                     borderDash: [5, 5],
                     pointRadius: 0,
+                    fill: false,
                     tension: 0
                 }]
             },
@@ -178,127 +422,201 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
-                scales: { y: { min: 0, max: 20 } }
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } },
+                scales: { 
+                    x: { display: false },
+                    y: { min: 0, max: 20 } 
+                }
             }
         });
 
+        // 2. Raw Subcarriers Chart
         const rawCtx = document.getElementById('rawChart').getContext('2d');
         const rawChart = new Chart(rawCtx, {
             type: 'line',
             data: {
                 labels: Array.from({length: 52}, (_, i) => i+1),
                 datasets: [{
-                    label: '52 Subcarrier Amplitude',
+                    label: '52 Subcarrier Snapshot',
                     data: Array(52).fill(0),
-                    borderColor: '#1e90ff',
+                    borderColor: '#3a7bd5',
+                    backgroundColor: 'rgba(58, 123, 213, 0.2)',
                     borderWidth: 2,
-                    pointRadius: 1,
-                    tension: 0.2
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.4
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
-                scales: { y: { min: 0, max: 60 } }
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } },
+                scales: { 
+                    x: { display: false },
+                    y: { min: 0, max: 50 } 
+                }
             }
         });
 
-        // Setup WebSocket for Reverse Proxy
+        // WebSocket Connection
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let wsUrl = `${wsProtocol}//${window.location.host}/ws`;
-        
-        if (window.location.hostname.startsWith("192.") || window.location.hostname === "localhost") {
-            wsUrl = `${wsProtocol}//${window.location.hostname}:8765`;
-        }
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
         
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-            document.getElementById('connection-status').innerText = '🟢 Connected to Sentry Brain';
-            document.getElementById('connection-status').style.color = '#2ecc71';
-            // Request initial config
+            document.getElementById('connection-status').innerText = 'Connected';
+            document.getElementById('connection-status').style.color = 'var(--success)';
+            document.getElementById('conn-dot').style.backgroundColor = 'var(--success)';
             ws.send(JSON.stringify({command: "get_config"}));
         };
 
         ws.onclose = () => {
-            document.getElementById('connection-status').innerText = '🔴 Disconnected from Sentry Brain';
-            document.getElementById('connection-status').style.color = '#e74c3c';
+            document.getElementById('connection-status').innerText = 'Disconnected';
+            document.getElementById('connection-status').style.color = 'var(--danger)';
+            document.getElementById('conn-dot').style.backgroundColor = 'var(--danger)';
         };
 
-        // GUI Control Functions
+        // GUI Controls
         function changeThreshold() {
             const val = document.getElementById('threshold-slider').value;
             document.getElementById('threshold-display').innerText = parseFloat(val).toFixed(1);
             ws.send(JSON.stringify({command: "set_threshold", value: val}));
         }
 
-        // Live update slider text while dragging (without spamming WS)
         document.getElementById('threshold-slider').addEventListener('input', function() {
             document.getElementById('threshold-display').innerText = parseFloat(this.value).toFixed(1);
         });
 
-        function changePort() {
-            const port = document.getElementById('port-select').value;
-            if (port) {
-                ws.send(JSON.stringify({command: "set_port", port: port}));
+        let currentMode = "USB";
+
+        function setMode(modeStr) {
+            // modeStr can be 'USB' or 'Wireless UDP'
+            const mode = modeStr === 'USB' ? 'USB' : 'UDP';
+            ws.send(JSON.stringify({command: "set_mode", mode: mode}));
+        }
+
+        function toggleConnect() {
+            const btn = document.getElementById('connect-btn');
+            if (btn.innerText === "Disconnect") {
+                ws.send(JSON.stringify({command: "disconnect"}));
+                btn.innerText = "Disconnecting...";
+                btn.disabled = true;
+                btn.style.opacity = "0.7";
+            } else {
+                if (currentMode === "USB") {
+                    const port = document.getElementById('port-select').value;
+                    if (port) {
+                        ws.send(JSON.stringify({command: "set_port", port: port}));
+                        btn.innerText = "Connecting...";
+                        btn.disabled = true;
+                        btn.style.opacity = "0.7";
+                    }
+                } else {
+                    const port = document.getElementById('udp-port').value;
+                    if (port) {
+                        ws.send(JSON.stringify({command: "set_udp_port", port: port}));
+                        btn.innerText = "Connecting...";
+                        btn.disabled = true;
+                        btn.style.opacity = "0.7";
+                    }
+                }
             }
         }
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             
-            // Handle Config Payload
+            // Handle Config
             if (data.type === "config") {
-                // Update slider UI
                 document.getElementById('threshold-slider').value = data.threshold;
                 document.getElementById('threshold-display').innerText = parseFloat(data.threshold).toFixed(1);
                 
-                // Update Port Dropdown UI
+                // Sync Mode UI
+                currentMode = data.mode || "USB";
+                if (currentMode === "USB") {
+                    document.getElementById('mode-usb').classList.add('active');
+                    document.getElementById('mode-udp').classList.remove('active');
+                    document.getElementById('port-select').style.display = 'block';
+                    document.getElementById('udp-port').style.display = 'none';
+                } else {
+                    document.getElementById('mode-usb').classList.remove('active');
+                    document.getElementById('mode-udp').classList.add('active');
+                    document.getElementById('port-select').style.display = 'none';
+                    document.getElementById('udp-port').style.display = 'block';
+                }
+                
+                if (data.udp_port) {
+                    document.getElementById('udp-port').value = data.udp_port;
+                }
+                
                 const portSelect = document.getElementById('port-select');
                 portSelect.innerHTML = '';
-                data.available_ports.forEach(p => {
+                if (data.available_ports && data.available_ports.length > 0) {
+                    data.available_ports.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p;
+                        opt.innerText = p;
+                        if (p === data.port) opt.selected = true;
+                        portSelect.appendChild(opt);
+                    });
+                } else {
                     const opt = document.createElement('option');
-                    opt.value = p;
-                    opt.innerText = p;
-                    if (p === data.port) opt.selected = true;
+                    opt.value = "";
+                    opt.innerText = "No devices found";
                     portSelect.appendChild(opt);
-                });
-                return; // Stop processing further for config packets
+                }
+                
+                const btn = document.getElementById('connect-btn');
+                btn.disabled = false;
+                btn.style.opacity = "1.0";
+                
+                if (data.is_connected) {
+                    btn.innerText = "Disconnect";
+                    btn.style.background = "linear-gradient(45deg, var(--danger), #ff4b2b)";
+                } else {
+                    btn.innerText = "Connect";
+                    btn.style.background = "linear-gradient(45deg, var(--primary), var(--secondary))";
+                }
+                
+                return;
             }
             
-            // --- Live Data Parsing ---
-            // Update State Box
+            // Handle Live Data
+            const statePanel = document.getElementById('state-panel');
             const stateBox = document.getElementById('state-box');
+            
+            // Reset Classes
+            statePanel.classList.remove('state-static', 'state-movement', 'state-fall');
+
             if (data.state === 2) {
-                stateBox.innerText = '🚨 FALL DETECTED 🚨';
-                stateBox.style.backgroundColor = '#e74c3c';
+                stateBox.innerText = 'FALL DETECTED';
+                statePanel.classList.add('state-fall');
             } else if (data.state === 1) {
                 stateBox.innerText = 'MOVEMENT';
-                stateBox.style.backgroundColor = '#f39c12';
+                statePanel.classList.add('state-movement');
             } else {
                 stateBox.innerText = 'STATIC';
-                stateBox.style.backgroundColor = '#27ae60';
+                statePanel.classList.add('state-static');
             }
 
-            // Update Variance Text
+            // Update Metrics
             document.getElementById('variance-val').innerText = data.variance.toFixed(2);
 
-            // Update Variance Chart
+            // Update Charts
             let varData = varianceChart.data.datasets[0].data;
             varData.shift();
             varData.push(data.variance);
             
-            // Update Threshold Line (Dynamically in case server changes it)
             let threshData = varianceChart.data.datasets[1].data;
             threshData.shift();
             threshData.push(data.threshold);
             
-            varianceChart.update();
+            varianceChart.update('none');
 
-            // Update Raw Subcarriers Chart
             rawChart.data.datasets[0].data = data.amplitudes;
-            rawChart.update();
+            rawChart.update('none');
         };
     </script>
 </body>
