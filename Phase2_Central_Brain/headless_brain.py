@@ -12,8 +12,7 @@ import websockets
 import http.server
 import socketserver
 
-import serial.tools.list_ports
-from serial_reader import SerialReader
+from udp_reader import UDPReader
 from ml_engine import extract_features
 from line_notifier import send_fall_alert
 
@@ -30,10 +29,10 @@ except Exception as e:
 THRESHOLD = global_config["ai_settings"]["variance_threshold"]
 WS_PORT = global_config["networking"]["websocket_port"]
 HTTP_PORT = global_config["networking"]["http_port"]
+UDP_PORT = 5000
 
 class HeadlessBrain:
-    def __init__(self, port, threshold=2.0):
-        self.port = port
+    def __init__(self, threshold=2.0):
         self.threshold = threshold
         
         self.history = []
@@ -51,7 +50,8 @@ class HeadlessBrain:
         self.last_line_alert_time = 0
         self.current_state = 0 # 0=STATIC, 1=MOVEMENT, 2=FALL
         
-        self.reader = SerialReader(self.port, 460800, self.data_received)
+        # Replace SerialReader with UDPReader
+        self.reader = UDPReader(UDP_PORT, self.data_received)
         
         # IoT Server Variables
         self.connected_clients = set()
@@ -63,12 +63,11 @@ class HeadlessBrain:
         print(f"[IOT] New Web Dashboard Connected! ({len(self.connected_clients)} total)")
         
         # Send initial configuration
-        ports = [p.device for p in serial.tools.list_ports.comports()]
         init_msg = json.dumps({
             "type": "config",
             "threshold": self.threshold,
-            "port": self.port,
-            "available_ports": ports
+            "port": "UDP_WIRELESS",
+            "available_ports": ["UDP_WIRELESS"]
         })
         try:
             await websocket.send(init_msg)
@@ -82,23 +81,12 @@ class HeadlessBrain:
                     if data.get("command") == "set_threshold":
                         self.threshold = float(data.get("value", 2.0))
                         print(f"[IOT] Threshold updated to {self.threshold}")
-                    elif data.get("command") == "set_port":
-                        new_port = data.get("port")
-                        print(f"[IOT] Switching COM port to {new_port}...")
-                        self.port = new_port
-                        self.reader.disconnect()
-                        self.reader = SerialReader(self.port, 460800, self.data_received)
-                        if self.reader.connect():
-                            print(f"[IOT] Successfully reconnected to {self.port}")
-                        else:
-                            print(f"[IOT] Failed to connect to {self.port}")
                     elif data.get("command") == "get_config":
-                        ports = [p.device for p in serial.tools.list_ports.comports()]
                         cfg_msg = json.dumps({
                             "type": "config",
                             "threshold": self.threshold,
-                            "port": self.port,
-                            "available_ports": ports
+                            "port": "UDP_WIRELESS",
+                            "available_ports": ["UDP_WIRELESS"]
                         })
                         await websocket.send(cfg_msg)
                 except Exception as e:
@@ -113,13 +101,13 @@ class HeadlessBrain:
             websockets.broadcast(self.connected_clients, message)
 
     async def _ws_main(self):
-        async with websockets.serve(self.ws_handler, "0.0.0.0", 8765):
+        async with websockets.serve(self.ws_handler, "0.0.0.0", WS_PORT):
             await asyncio.Future()
 
     def start_ws_server(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        print("[INFO] WebSocket Server running on port 8765")
+        print(f"[INFO] WebSocket Server running on port {WS_PORT}")
         try:
             self.loop.run_until_complete(self._ws_main())
         except asyncio.CancelledError:
@@ -127,24 +115,22 @@ class HeadlessBrain:
 
     # --- HTTP SERVER LOGIC ---
     def start_http_server(self):
-        # Serve the /dashboard folder
         dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
         os.chdir(dashboard_dir)
         handler = http.server.SimpleHTTPRequestHandler
-        # Handle Address already in use
         socketserver.TCPServer.allow_reuse_address = True
         try:
-            with socketserver.TCPServer(("0.0.0.0", 8000), handler) as httpd:
-                print("[INFO] HTTP Dashboard serving at port 8000 (Open this in your iPad/Phone)")
+            with socketserver.TCPServer(("0.0.0.0", HTTP_PORT), handler) as httpd:
+                print(f"[INFO] HTTP Dashboard serving at port {HTTP_PORT} (Open this in your iPad/Phone)")
                 httpd.serve_forever()
         except Exception as e:
             print(f"[ERROR] HTTP Server failed to start: {e}")
 
     # --- MAIN STARTUP ---
     def start(self):
-        print(f"[INFO] Connecting to {self.port}...")
+        print(f"[INFO] Starting UDP Listener on port {UDP_PORT}...")
         if self.reader.connect():
-            print(f"[SUCCESS] Connected to {self.port}! Listening for CSI data...")
+            print(f"[SUCCESS] UDP Port opened! Listening for CSI data...")
             
             # Start HTTP Server in background thread
             threading.Thread(target=self.start_http_server, daemon=True).start()
@@ -156,7 +142,7 @@ class HeadlessBrain:
                 print("\n[INFO] Shutting down...")
                 self.reader.disconnect()
         else:
-            print("[ERROR] Connection failed. Check USB connection and permissions.")
+            print("[ERROR] UDP Bind failed. Is the port already in use?")
 
     # --- CSI DATA PROCESSING ---
     def data_received(self, amplitudes, rssi):
@@ -227,19 +213,8 @@ class HeadlessBrain:
 
 if __name__ == "__main__":
     print("=======================================")
-    print(" SENTRY: IoT Web Server Processor      ")
+    print(" SENTRY: Wireless UDP Processor        ")
     print("=======================================")
     
-    ports = serial.tools.list_ports.comports()
-    if not ports:
-        print("[ERROR] No serial ports found. Is the ESP32 plugged in?")
-        sys.exit(1)
-        
-    target_port = ports[0].device
-    for p in ports:
-        if "USB" in p.device:
-            target_port = p.device
-            break
-            
-    brain = HeadlessBrain(port=target_port, threshold=2.0)
+    brain = HeadlessBrain(threshold=THRESHOLD)
     brain.start()
