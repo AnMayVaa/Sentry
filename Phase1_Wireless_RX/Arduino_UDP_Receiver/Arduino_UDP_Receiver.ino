@@ -2,13 +2,17 @@
 #include <WiFiUdp.h>
 #include <esp_wifi.h>
 
+#include <ESPmDNS.h>
+
 // --- CONFIGURATION ---
 const char* ssid = "BUNDAOBUNTAI";
 const char* password = "ohm12345";
-const char* dest_ip = "192.168.1.8"; // MUST MATCH RASPBERRY PI IP!
+const char* dest_host = "OhmPatumwan"; // Hostname of the Raspberry Pi
 const int dest_port = 5000;
 
 WiFiUDP udp;
+IPAddress target_ip;
+bool target_resolved = false;
 
 // We use FreeRTOS queues just like in ESP-IDF to prevent crashing!
 QueueHandle_t csi_queue;
@@ -65,6 +69,22 @@ void setup() {
     Serial.println("\nWiFi Connected! IP Address: ");
     Serial.println(WiFi.localIP());
 
+    // Initialize mDNS
+    if (!MDNS.begin("esp32-csi")) {
+        Serial.println("Error setting up mDNS responder!");
+    }
+    
+    Serial.printf("Resolving hostname %s.local...\n", dest_host);
+    target_ip = MDNS.queryHost(dest_host);
+    while (target_ip.toString() == "0.0.0.0") {
+        Serial.print(".");
+        delay(1000);
+        target_ip = MDNS.queryHost(dest_host);
+    }
+    target_resolved = true;
+    Serial.print("\nResolved IP: ");
+    Serial.println(target_ip);
+
     // Enable Promiscuous mode and CSI sniffing
     esp_wifi_set_promiscuous(true);
     wifi_promiscuous_filter_t rx_filter = { .filter_mask = WIFI_PROMIS_FILTER_MASK_ALL };
@@ -85,8 +105,8 @@ void setup() {
 
 void loop() {
     // 1. Check for SOS Button
-    if (digitalRead(0) == LOW) {
-        udp.beginPacket(dest_ip, dest_port);
+    if (digitalRead(0) == LOW && target_resolved) {
+        udp.beginPacket(target_ip, dest_port);
         udp.print("SOS_ALERT\n");
         udp.endPacket();
         Serial.println("SOS_ALERT");
@@ -98,8 +118,8 @@ void loop() {
     // By batching 5 frames into 1 UDP packet, we reduce the transmit overhead by 500%, 
     // restoring the full 30Hz frame rate so the Variance mathematical window works perfectly!
     int waiting = uxQueueMessagesWaiting(csi_queue);
-    if (waiting >= 5) {
-        udp.beginPacket(dest_ip, dest_port);
+    if (waiting >= 5 && target_resolved) {
+        udp.beginPacket(target_ip, dest_port);
         
         for (int b = 0; b < waiting; b++) {
             csi_packet_t pkt;
