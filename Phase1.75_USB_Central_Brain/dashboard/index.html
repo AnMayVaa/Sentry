@@ -271,7 +271,17 @@
                 gap: 15px;
             }
         }
-
+        
+        /* Mobile specific layout */
+        @media (max-width: 600px) {
+            .controls-container {
+                flex-direction: column;
+            }
+            .control-card {
+                flex: none; /* remove flex behavior to naturally stack */
+                width: 100%;
+            }
+        }
 
     </style>
 </head>
@@ -453,14 +463,16 @@
             const btn = document.getElementById('connect-btn');
             if (btn.innerText === "Disconnect") {
                 ws.send(JSON.stringify({command: "disconnect"}));
-                btn.innerText = "Connect";
-                btn.style.background = "linear-gradient(45deg, var(--primary), var(--secondary))";
+                btn.innerText = "Disconnecting...";
+                btn.disabled = true;
+                btn.style.opacity = "0.7";
             } else {
                 const port = document.getElementById('port-select').value;
                 if (port) {
                     ws.send(JSON.stringify({command: "set_port", port: port}));
-                    btn.innerText = "Disconnect";
-                    btn.style.background = "linear-gradient(45deg, var(--danger), #ff4b2b)";
+                    btn.innerText = "Connecting...";
+                    btn.disabled = true;
+                    btn.style.opacity = "0.7";
                 }
             }
         }
@@ -484,6 +496,8 @@
                 });
                 
                 const btn = document.getElementById('connect-btn');
+                btn.disabled = false;
+                btn.style.opacity = "1.0";
                 if (data.port && data.port !== "") {
                     btn.innerText = "Disconnect";
                     btn.style.background = "linear-gradient(45deg, var(--danger), #ff4b2b)";
