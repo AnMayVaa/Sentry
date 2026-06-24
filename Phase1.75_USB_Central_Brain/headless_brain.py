@@ -83,6 +83,7 @@ class HeadlessBrain:
                     if data.get("command") == "set_threshold":
                         self.threshold = float(data.get("value", 2.0))
                         print(f"[IOT] Threshold updated to {self.threshold}")
+                        await self.broadcast_config()
                     elif data.get("command") == "set_port":
                         new_port = data.get("port")
                         print(f"[IOT] Switching COM port to {new_port}...")
@@ -93,26 +94,15 @@ class HeadlessBrain:
                             print(f"[IOT] Successfully reconnected to {self.port}")
                         else:
                             print(f"[IOT] Failed to connect to {self.port}")
+                            self.port = ""
+                        await self.broadcast_config()
                     elif data.get("command") == "disconnect":
                         print("[IOT] Stopping CSI stream (Disconnecting)...")
                         self.reader.disconnect()
                         self.port = ""
-                        cfg_msg = json.dumps({
-                            "type": "config",
-                            "threshold": self.threshold,
-                            "port": self.port,
-                            "available_ports": [p.device for p in serial.tools.list_ports.comports()]
-                        })
-                        await websocket.send(cfg_msg)
+                        await self.broadcast_config()
                     elif data.get("command") == "get_config":
-                        ports = [p.device for p in serial.tools.list_ports.comports()]
-                        cfg_msg = json.dumps({
-                            "type": "config",
-                            "threshold": self.threshold,
-                            "port": self.port,
-                            "available_ports": ports
-                        })
-                        await websocket.send(cfg_msg)
+                        await self.broadcast_config()
                 except Exception as e:
                     print(f"[IOT] Error parsing command: {e}")
         finally:
@@ -123,6 +113,15 @@ class HeadlessBrain:
         if self.connected_clients:
             message = json.dumps(payload)
             websockets.broadcast(self.connected_clients, message)
+            
+    async def broadcast_config(self):
+        cfg_payload = {
+            "type": "config",
+            "threshold": self.threshold,
+            "port": self.port,
+            "available_ports": [p.device for p in serial.tools.list_ports.comports()]
+        }
+        await self.broadcast_ws(cfg_payload)
 
     # --- UNIFIED HTTP & WEBSOCKET SERVER LOGIC ---
     async def process_request(self, connection, request):
