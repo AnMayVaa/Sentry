@@ -14,8 +14,22 @@ import socketserver
 
 import serial.tools.list_ports
 from serial_reader import SerialReader
-from train_model import extract_features
+from ml_engine import extract_features
 from line_notifier import send_fall_alert
+
+# Load Config
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+try:
+    with open(CONFIG_PATH, "r") as f:
+        global_config = json.load(f)
+except Exception as e:
+    print(f"Error loading config.json: {e}")
+    global_config = {"ai_settings": {"variance_threshold": 2.0}, "networking": {"websocket_port": 8765, "http_port": 8000}}
+
+# --- CONFIGURATION ---
+THRESHOLD = global_config["ai_settings"]["variance_threshold"]
+WS_PORT = global_config["networking"]["websocket_port"]
+HTTP_PORT = global_config["networking"]["http_port"]
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):

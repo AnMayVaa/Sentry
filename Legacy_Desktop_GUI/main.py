@@ -217,10 +217,12 @@ class CSIVisualizerApp(QMainWindow):
                 
                 current_variance = features[0]
                 
-                # --- SENSITIVITY OVERRIDE ---
-                # features[0] is the mean standard deviation (variance).
-                # If the physical variance exceeds the UI Threshold slider, force the app out of STATIC!
-                if current_variance > self.current_threshold and raw_pred == 0:
+                # --- SENSITIVITY OVERRIDE (NOISE GATE) ---
+                if current_variance < self.current_threshold:
+                    # If variance is below the threshold, it is physically impossible to be moving.
+                    raw_pred = 0 # Force STATIC
+                elif current_variance >= self.current_threshold and raw_pred == 0:
+                    # If physical variance exceeds the slider, force the app out of STATIC!
                     raw_pred = 1 # Force MOVEMENT
                 
                 # Debounce Logic

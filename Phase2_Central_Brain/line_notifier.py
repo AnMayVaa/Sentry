@@ -1,11 +1,19 @@
 import requests
 import json
 import datetime
+import os
 
-# --- CONFIGURATION ---
-# Replace these with your actual tokens later!
-LINE_CHANNEL_ACCESS_TOKEN = "pBZ5zrGCs9DJm8/9L1jtJfP9/JfGtxNVC8GsTHA34Z3kB1AuQMAW5IcTXgSlSR310hrMsZTK7u9xxGYS5mZB9OFbxg5fEkX3KnGg+RN/kkQzLEN0Gi8QH1ItYz3FCDqzeVRHEKptG6bR6wJ9v5a4CAdB04t89/1O/w1cDnyilFU="
-LINE_USER_ID = "Uc6dede4107b73b7f50a1f60d10d39f96"
+# Load config from root directory
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+try:
+    with open(CONFIG_PATH, "r") as f:
+        config = json.load(f)
+        LINE_CHANNEL_ACCESS_TOKEN = config["notifications"]["line_channel_access_token"]
+        LINE_USER_ID = config["notifications"]["line_user_id"]
+except Exception as e:
+    print(f"Failed to load config.json: {e}")
+    LINE_CHANNEL_ACCESS_TOKEN = "YOUR_CHANNEL_ACCESS_TOKEN"
+    LINE_USER_ID = "YOUR_USER_ID"
 
 def send_fall_alert():
     if LINE_CHANNEL_ACCESS_TOKEN == "YOUR_CHANNEL_ACCESS_TOKEN":
