@@ -28,8 +28,8 @@
             color: var(--text-main);
             margin: 0;
             padding: 2vh 3vw;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
+            overflow-x: hidden;
             display: flex;
             flex-direction: column;
             gap: 2vh;
@@ -80,7 +80,7 @@
             flex-wrap: wrap;
         }
         .control-card {
-            flex: 1;
+            flex: 1 1 300px;
             padding: 20px 25px;
             display: flex;
             flex-direction: column;
@@ -273,7 +273,7 @@
                 <select id="port-select" style="flex:1;">
                     <option value="">Scanning for devices...</option>
                 </select>
-                <button onclick="changePort()">Connect</button>
+                <button id="connect-btn" onclick="toggleConnect()">Connect</button>
             </div>
         </div>
         
@@ -424,10 +424,19 @@
             document.getElementById('threshold-display').innerText = parseFloat(this.value).toFixed(1);
         });
 
-        function changePort() {
-            const port = document.getElementById('port-select').value;
-            if (port) {
-                ws.send(JSON.stringify({command: "set_port", port: port}));
+        function toggleConnect() {
+            const btn = document.getElementById('connect-btn');
+            if (btn.innerText === "Disconnect") {
+                ws.send(JSON.stringify({command: "disconnect"}));
+                btn.innerText = "Connect";
+                btn.style.background = "linear-gradient(45deg, var(--primary), var(--secondary))";
+            } else {
+                const port = document.getElementById('port-select').value;
+                if (port) {
+                    ws.send(JSON.stringify({command: "set_port", port: port}));
+                    btn.innerText = "Disconnect";
+                    btn.style.background = "linear-gradient(45deg, var(--danger), #ff4b2b)";
+                }
             }
         }
 
@@ -448,6 +457,16 @@
                     if (p === data.port) opt.selected = true;
                     portSelect.appendChild(opt);
                 });
+                
+                const btn = document.getElementById('connect-btn');
+                if (data.port && data.port !== "") {
+                    btn.innerText = "Disconnect";
+                    btn.style.background = "linear-gradient(45deg, var(--danger), #ff4b2b)";
+                } else {
+                    btn.innerText = "Connect";
+                    btn.style.background = "linear-gradient(45deg, var(--primary), var(--secondary))";
+                }
+                
                 return;
             }
             

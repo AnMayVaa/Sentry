@@ -93,6 +93,17 @@ class HeadlessBrain:
                             print(f"[IOT] Successfully reconnected to {self.port}")
                         else:
                             print(f"[IOT] Failed to connect to {self.port}")
+                    elif data.get("command") == "disconnect":
+                        print("[IOT] Stopping CSI stream (Disconnecting)...")
+                        self.reader.disconnect()
+                        self.port = ""
+                        cfg_msg = json.dumps({
+                            "type": "config",
+                            "threshold": self.threshold,
+                            "port": self.port,
+                            "available_ports": [p.device for p in serial.tools.list_ports.comports()]
+                        })
+                        await websocket.send(cfg_msg)
                     elif data.get("command") == "get_config":
                         ports = [p.device for p in serial.tools.list_ports.comports()]
                         cfg_msg = json.dumps({
