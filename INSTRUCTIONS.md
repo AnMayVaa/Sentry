@@ -13,16 +13,15 @@ This document serves as the master knowledge base for any AI assisting with this
   - The Pi runs the heavy Machine Learning inference, Web Server, and WebSocket Server.
 
 ## 3. Software Stack & Codebase
-The core logic resides in the `control_app` directory:
-- **`headless_brain.py`**: The main backend script. It reads serial data from the ESP32 at 30Hz, extracts features (variance), runs them through a pre-trained `scikit-learn` Random Forest model (`fall_detection_model.pkl`), and broadcasts the state and live data via WebSockets.
+The core logic resides in the `Phase1.75_USB_Central_Brain` directory:
+- **`headless_brain.py`**: The main backend script. It reads serial data from the ESP32 at 30Hz, extracts features (variance), runs them through a pre-trained `scikit-learn` Random Forest model (`fall_detection_model.pkl`), and broadcasts the state and live data via WebSockets. It also hosts the HTTP Web Server.
 - **`serial_reader.py`**: Parses raw CSI integers from the ESP32. We extract 52 usable subcarrier amplitudes (ignoring the first byte and null subcarriers).
-- **`dashboard/index.html`**: The frontend UI. It features a modern Dark Mode dashboard using `Chart.js` to render 30fps graphs (Live Variance and 52-Subcarrier Raw Amplitudes). It connects to the backend via WebSockets.
+- **`dashboard/index.html`**: The frontend UI. It features a modern Glassmorphism Dark Mode dashboard using `Chart.js` to render hardware-accelerated graphs. It is fully responsive for Mobile and iPad.
 - **`line_notifier.py`**: Sends an emergency alert message to a LINE Group via the LINE Notify API when a Fall is confirmed.
-- **`train_model.py`**: Used for extracting features and training the `.pkl` model.
 
 ## 4. Edge Server Deployment (Raspberry Pi 5)
-- **Path:** `/home/ohmpatumwan/Sentry/control_app`
-- **Python Environment:** Runs inside a virtual environment (`venv`) to isolate dependencies (`pandas`, `scikit-learn`, `websockets`, `pyserial`).
+- **Path:** `/home/ohmpatumwan/Sentry/Phase1.75_USB_Central_Brain`
+- **Python Environment:** Runs natively or via `venv` on the Pi (`pandas`, `scikit-learn`, `websockets`, `pyserial`).
 - **Systemd Service:** `sentry.service`
   - The backend runs automatically on boot as a Linux background service.
   - Commands to manage: 
