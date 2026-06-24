@@ -1,42 +1,39 @@
-import socket
+﻿import serial
 import threading
 import time
 import numpy as np
 
-class UDPReader:
-    def __init__(self, port=5000, data_callback=None):
+class SerialReader:
+    def __init__(self, port, baudrate=115200, data_callback=None):
         self.port = port
-        self.sock = None
+        self.baudrate = baudrate
+        self.ser = None
         self.running = False
         self.thread = None
         self.data_callback = data_callback
 
     def connect(self):
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.sock.bind(("0.0.0.0", self.port))
-            self.sock.settimeout(1.0)
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
             self.running = True
             self.thread = threading.Thread(target=self._read_loop, daemon=True)
             self.thread.start()
-            print(f"[UDPReader] Listening for CSI packets on 0.0.0.0:{self.port}...")
             return True
         except Exception as e:
-            print(f"Failed to bind UDP socket to port {self.port}: {e}")
+            print(f"Failed to connect to {self.port}: {e}")
             return False
 
     def disconnect(self):
         self.running = False
         if self.thread:
             self.thread.join(timeout=1.0)
-        if self.sock:
-            self.sock.close()
+        if self.ser and self.ser.is_open:
+            self.ser.close()
             
     def _read_loop(self):
-        while self.running and self.sock:
+        while self.running and self.ser and self.ser.is_open:
             try:
-                data, addr = self.sock.recvfrom(2048)
-                line = data.decode('utf-8', errors='ignore').strip()
+                line = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 
                 if line.startswith("SOS_ALERT"):
                     if self.data_callback:
@@ -46,10 +43,12 @@ class UDPReader:
                 if line.startswith("CSI_DATA"):
                     parts = line.split(',')
                     if len(parts) > 4:
+                        # Format: CSI_DATA, mac, rssi, len, buf0, buf1...
                         rssi = int(parts[2])
                         csi_len = int(parts[3])
                         csi_raw = [int(x) for x in parts[4:] if x]
                         
+                        # Calculate amplitude for the 64 subcarriers
                         if len(csi_raw) >= 128:
                             amplitudes = []
                             for i in range(0, 128, 2):
@@ -58,16 +57,18 @@ class UDPReader:
                                 amp = np.sqrt(imag**2 + real**2)
                                 amplitudes.append(amp)
                                 
-                            # Filter the 52 valid data subcarriers
+                            # ESP32 802.11n HT20 subcarrier mapping:
+                            # Index 0: DC subcarrier (massive spike/noise)
+                            # Index 1-27: Positive subcarriers
+                            # Index 28-37: Null/Guard subcarriers (zero dip)
+                            # Index 38-63: Negative subcarriers
+                            # We filter out the bad ones to keep the 52 usable data subcarriers!
                             valid_amplitudes = amplitudes[1:28] + amplitudes[38:64]
                             
                             if self.data_callback:
                                 self.data_callback(valid_amplitudes, rssi)
                         else:
                             print(f"Skipping packet, CSI length too short: {len(csi_raw)}")
-            except socket.timeout:
-                continue
             except Exception as e:
-                if self.running:
-                    print(f"UDP Read error: {e}")
+                print(f"Read error: {e}")
                 time.sleep(0.1)

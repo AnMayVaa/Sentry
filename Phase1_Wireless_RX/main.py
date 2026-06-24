@@ -1,15 +1,14 @@
-﻿import sys
+import sys
 import locale
 locale.setlocale(locale.LC_ALL, 'C') # Force English numerals
 
-print("Starting main.py")
+print("Starting UDP main.py")
 try:
     from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QComboBox, QLabel, QGroupBox
     from PyQt6.QtCore import QTimer
     import pyqtgraph as pg
     import numpy as np
-    import serial.tools.list_ports
-    from serial_reader import SerialReader
+    from udp_reader import UDPReader
     print("Imported everything")
 except Exception as e:
     print(f"Import error: {e}")
@@ -18,7 +17,7 @@ except Exception as e:
 class CSIVisualizerApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("CSI Fall Detection Control App")
+        self.setWindowTitle("Phase 1: Wireless UDP CSI Receiver")
         self.resize(1000, 600)
         
         self.reader = None
@@ -56,22 +55,15 @@ class CSIVisualizerApp(QMainWindow):
         left_panel = QVBoxLayout()
         
         # 1. Connection Group
-        conn_group = QGroupBox("1. Hardware Connection")
+        conn_group = QGroupBox("1. Wireless Connection")
         conn_group.setStyleSheet("QGroupBox { font-weight: bold; }")
         conn_layout = QVBoxLayout()
         
         port_row = QHBoxLayout()
-        port_row.addWidget(QLabel("COM Port:"))
-        self.port_combo = QComboBox()
-        self.refresh_ports()
-        port_row.addWidget(self.port_combo)
-        
-        self.btn_refresh = QPushButton("Refresh")
-        self.btn_refresh.clicked.connect(self.refresh_ports)
-        port_row.addWidget(self.btn_refresh)
+        port_row.addWidget(QLabel("Listening on UDP Port 5000..."))
         conn_layout.addLayout(port_row)
         
-        self.btn_connect = QPushButton("Connect Receiver")
+        self.btn_connect = QPushButton("Start Listening")
         self.btn_connect.setMinimumHeight(35)
         self.btn_connect.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; border-radius: 4px;")
         self.btn_connect.clicked.connect(self.toggle_connection)
@@ -169,19 +161,13 @@ class CSIVisualizerApp(QMainWindow):
         if hasattr(self, 'thresh_line'):
             self.thresh_line.setValue(value)
 
-    def refresh_ports(self):
-        self.port_combo.clear()
-        ports = serial.tools.list_ports.comports()
-        for p in ports:
-            self.port_combo.addItem(p.device)
-            
     def data_received(self, amplitudes, rssi):
         # --- PHASE 4: SOS BUTTON INTERRUPT ---
         import time
         if isinstance(amplitudes, str) and amplitudes == "SOS":
             self.current_prediction = 2 # Force Fall State
             self.fall_latch_time = time.time()
-            self.lbl_movement.setText("STATUS: ๐จ SOS BUTTON PRESSED! ๐จ")
+            self.lbl_movement.setText("STATUS: 🚨 SOS BUTTON PRESSED! 🚨")
             self.lbl_movement.setStyleSheet("color: red; font-size: 32px; font-weight: bold;")
             
             # Trigger LINE Alert for SOS
@@ -312,21 +298,17 @@ class CSIVisualizerApp(QMainWindow):
             if self.is_recording:
                 self.toggle_recording() # Ensure recording stops if we disconnect
             self.reader.disconnect()
-            self.btn_connect.setText("Connect")
+            self.btn_connect.setText("Start Listening")
             self.lbl_status.setText("Disconnected")
             self.btn_record.setEnabled(False)
         else:
-            port = self.port_combo.currentText()
-            if not port:
-                return
-            
-            self.reader = SerialReader(port, 460800, self.data_received)
+            self.reader = UDPReader(5000, self.data_received)
             if self.reader.connect():
-                self.btn_connect.setText("Disconnect")
-                self.lbl_status.setText(f"Connected to {port}")
+                self.btn_connect.setText("Stop Listening")
+                self.lbl_status.setText(f"Listening on UDP 5000")
                 self.btn_record.setEnabled(True)
             else:
-                self.lbl_status.setText("Connection Failed")
+                self.lbl_status.setText("Failed to bind UDP port")
 
     def toggle_recording(self):
         import time
@@ -351,7 +333,7 @@ class CSIVisualizerApp(QMainWindow):
         else:
             self.btn_record.setText("Start Recording")
             self.btn_record.setStyleSheet("")
-            self.lbl_status.setText(f"Connected to {self.port_combo.currentText()}")
+            self.lbl_status.setText(f"Listening on UDP 5000")
             if hasattr(self, 'csv_file') and not self.csv_file.closed:
                 self.csv_file.close()
 
