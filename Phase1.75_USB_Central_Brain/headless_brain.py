@@ -38,6 +38,7 @@ class HeadlessBrain:
         
         self.history = []
         self.prediction_history = []
+        self.last_broadcast_time = 0
         
         self.ml_model = None
         try:
@@ -185,9 +186,11 @@ class HeadlessBrain:
             raw_pred = self.ml_model.predict([features])[0]
             current_variance = features[0]
             
-            # --- SENSITIVITY OVERRIDE ---
-            if current_variance > self.threshold and raw_pred == 0:
-                raw_pred = 1 # Force MOVEMENT
+            # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
+            if current_variance < self.threshold:
+                raw_pred = 0 # STRICT GATEKEEPER: Force STATIC if variance is too low
+            elif current_variance >= self.threshold and raw_pred == 0:
+                raw_pred = 1 # Force MOVEMENT if variance spikes
                 
             # Debounce Logic
             self.prediction_history.append(raw_pred)
@@ -215,15 +218,17 @@ class HeadlessBrain:
                 print(f"[{time.strftime('%H:%M:%S')}] STATE CHANGE: {state_names[new_state]} (Var: {current_variance:.2f})")
                 self.current_state = new_state
 
-            # --- IOT BROADCAST ---
+            # --- IOT BROADCAST (THROTTLED to ~15 FPS to prevent UI Lag) ---
             if self.loop and self.loop.is_running():
-                payload = {
-                    "state": self.current_state,
-                    "variance": current_variance,
-                    "threshold": self.threshold,
-                    "amplitudes": amplitudes
-                }
-                asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
+                if current_time - self.last_broadcast_time > 0.06: # 15 FPS Throttle
+                    payload = {
+                        "state": self.current_state,
+                        "variance": current_variance,
+                        "threshold": self.threshold,
+                        "amplitudes": amplitudes
+                    }
+                    asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
+                    self.last_broadcast_time = current_time
 
 if __name__ == "__main__":
     print("=======================================")
