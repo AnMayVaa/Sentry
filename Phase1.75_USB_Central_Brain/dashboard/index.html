@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentry IoT Dashboard</title>
+    <!-- Modern Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #00d2ff;
+            --secondary: #3a7bd5;
+            --success: #00f260;
+            --danger: #ff416c;
+            --warning: #fbc531;
+            --text-main: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.6);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px 40px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* Glassmorphism Classes */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: -webkit-linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .conn-status {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .pulse-dot {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* Controls */
+        .controls-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .control-card {
+            flex: 1;
+            padding: 20px 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-card label {
+            text-transform: uppercase;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+        }
+        .control-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        select, input[type="range"] {
+            background: rgba(0,0,0,0.2);
+            color: white;
+            border: 1px solid var(--glass-border);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            outline: none;
+        }
+        
+        button {
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 210, 255, 0.5);
+        }
+
+        /* Status Panels */
+        .status-container {
+            display: flex;
+            gap: 25px;
+        }
+        
+        .state-panel {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #state-box {
+            font-size: 56px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 2;
+        }
+
+        /* Fall Detected Glowing Animation */
+        @keyframes pulse-danger {
+            0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.7); }
+            70% { box-shadow: 0 0 0 40px rgba(255, 65, 108, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0); }
+        }
+        .state-fall {
+            background: linear-gradient(135deg, #ff416c, #ff4b2b) !important;
+            animation: pulse-danger 1.5s infinite;
+        }
+        .state-movement {
+            background: linear-gradient(135deg, #f2994a, #f2c94c) !important;
+        }
+        .state-static {
+            background: linear-gradient(135deg, #11998e, #38ef7d) !important;
+        }
+
+        .metric-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .metric-value {
+            font-size: 48px;
+            font-weight: 800;
+            color: var(--primary);
+            text-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+        }
+        .metric-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Charts */
+        .charts-container {
+            display: flex;
+            gap: 25px;
+            height: 350px;
+        }
+        .chart-wrapper {
+            flex: 1;
+            padding: 20px;
+            position: relative;
+        }
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px var(--primary);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="glass header">
+        <h1>Sentry IoT <span style="color:var(--text-muted); font-size:20px; font-weight:400;">/ Edge Dashboard</span></h1>
+        <div class="conn-status">
+            <span class="pulse-dot" id="conn-dot" style="background-color: var(--warning);"></span>
+            <span id="connection-status" style="color: var(--warning);">Connecting to Brain...</span>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-container">
+        <div class="glass control-card">
+            <label>ESP32 Hardware Connection</label>
+            <div class="control-row">
+                <select id="port-select" style="flex:1;">
+                    <option value="">Scanning for devices...</option>
+                </select>
+                <button onclick="changePort()">Bind Port</button>
+            </div>
+        </div>
+        
+        <div class="glass control-card">
+            <label>AI Sensitivity Threshold (Variance Trigger)</label>
+            <div class="control-row">
+                <input type="range" id="threshold-slider" min="0.1" max="10.0" step="0.1" value="2.0" onchange="changeThreshold()">
+                <div style="background: rgba(0,0,0,0.2); padding: 8px 15px; border-radius: 8px; font-weight: bold; width: 45px; text-align: center;">
+                    <span id="threshold-display">2.0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Displays -->
+    <div class="status-container">
+        <div class="glass state-panel state-static" id="state-panel">
+            <div id="state-box">STATIC</div>
+            <div style="color: rgba(255,255,255,0.8); margin-top: 10px; font-weight: 600; letter-spacing: 2px;">LIVE AI INFERENCE</div>
+        </div>
+        
+        <div class="glass metric-panel">
+            <div class="metric-label">Temporal Variance</div>
+            <div class="metric-value" id="variance-val">0.00</div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-container">
+        <div class="glass chart-wrapper">
+            <canvas id="varianceChart"></canvas>
+        </div>
+        <div class="glass chart-wrapper">
+            <canvas id="rawChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Chart JS Global Styling for Dark Theme
+        Chart.defaults.color = 'rgba(255, 255, 255, 0.6)';
+        Chart.defaults.font.family = 'Inter';
+        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
+
+        // 1. Variance Chart
+        const varCtx = document.getElementById('varianceChart').getContext('2d');
+        const varianceChart = new Chart(varCtx, {
+            type: 'line',
+            data: {
+                labels: Array(150).fill(''),
+                datasets: [{
+                    label: 'Motion Index (Variance)',
+                    data: Array(150).fill(0),
+                    borderColor: '#00d2ff',
+                    backgroundColor: 'rgba(0, 210, 255, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.3
+                },
+                {
+                    label: 'Threshold',
+                    data: Array(150).fill(2.0),
+                    borderColor: '#fbc531',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } },
+                scales: { 
+                    x: { display: false },
+                    y: { min: 0, max: 20 } 
+                }
+            }
+        });
+
+        // 2. Raw Subcarriers Chart
+        const rawCtx = document.getElementById('rawChart').getContext('2d');
+        const rawChart = new Chart(rawCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 52}, (_, i) => i+1),
+                datasets: [{
+                    label: '52 Subcarrier Snapshot',
+                    data: Array(52).fill(0),
+                    borderColor: '#3a7bd5',
+                    backgroundColor: 'rgba(58, 123, 213, 0.2)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } },
+                scales: { 
+                    x: { display: false },
+                    y: { min: 0, max: 50 } 
+                }
+            }
+        });
+
+        // WebSocket Connection
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        let wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+        if (window.location.hostname.startsWith("192.") || window.location.hostname === "localhost") {
+            wsUrl = `${wsProtocol}//${window.location.hostname}:8765`;
+        }
+        
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            document.getElementById('connection-status').innerText = 'Connected to Brain';
+            document.getElementById('connection-status').style.color = 'var(--success)';
+            document.getElementById('conn-dot').style.backgroundColor = 'var(--success)';
+            ws.send(JSON.stringify({command: "get_config"}));
+        };
+
+        ws.onclose = () => {
+            document.getElementById('connection-status').innerText = 'Disconnected';
+            document.getElementById('connection-status').style.color = 'var(--danger)';
+            document.getElementById('conn-dot').style.backgroundColor = 'var(--danger)';
+        };
+
+        // GUI Controls
+        function changeThreshold() {
+            const val = document.getElementById('threshold-slider').value;
+            document.getElementById('threshold-display').innerText = parseFloat(val).toFixed(1);
+            ws.send(JSON.stringify({command: "set_threshold", value: val}));
+        }
+
+        document.getElementById('threshold-slider').addEventListener('input', function() {
+            document.getElementById('threshold-display').innerText = parseFloat(this.value).toFixed(1);
+        });
+
+        function changePort() {
+            const port = document.getElementById('port-select').value;
+            if (port) {
+                ws.send(JSON.stringify({command: "set_port", port: port}));
+            }
+        }
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Handle Config
+            if (data.type === "config") {
+                document.getElementById('threshold-slider').value = data.threshold;
+                document.getElementById('threshold-display').innerText = parseFloat(data.threshold).toFixed(1);
+                
+                const portSelect = document.getElementById('port-select');
+                portSelect.innerHTML = '';
+                data.available_ports.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.innerText = p;
+                    if (p === data.port) opt.selected = true;
+                    portSelect.appendChild(opt);
+                });
+                return;
+            }
+            
+            // Handle Live Data
+            const statePanel = document.getElementById('state-panel');
+            const stateBox = document.getElementById('state-box');
+            
+            // Reset Classes
+            statePanel.classList.remove('state-static', 'state-movement', 'state-fall');
+
+            if (data.state === 2) {
+                stateBox.innerText = 'FALL DETECTED';
+                statePanel.classList.add('state-fall');
+            } else if (data.state === 1) {
+                stateBox.innerText = 'MOVEMENT';
+                statePanel.classList.add('state-movement');
+            } else {
+                stateBox.innerText = 'STATIC';
+                statePanel.classList.add('state-static');
+            }
+
+            // Update Metrics
+            document.getElementById('variance-val').innerText = data.variance.toFixed(2);
+
+            // Update Charts
+            let varData = varianceChart.data.datasets[0].data;
+            varData.shift();
+            varData.push(data.variance);
+            
+            let threshData = varianceChart.data.datasets[1].data;
+            threshData.shift();
+            threshData.push(data.threshold);
+            
+            varianceChart.update();
+
+            rawChart.data.datasets[0].data = data.amplitudes;
+            rawChart.update();
+        };
+    </script>
+</body>
+</html>
