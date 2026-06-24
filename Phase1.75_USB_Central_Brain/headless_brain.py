@@ -112,33 +112,37 @@ class HeadlessBrain:
             message = json.dumps(payload)
             websockets.broadcast(self.connected_clients, message)
 
+    # --- UNIFIED HTTP & WEBSOCKET SERVER LOGIC ---
+    async def process_request(self, path, request_headers):
+        import http
+        if path == "/" or path == "/index.html":
+            dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
+            index_path = os.path.join(dashboard_dir, 'index.html')
+            try:
+                with open(index_path, "rb") as f:
+                    content = f.read()
+                return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8")], content)
+            except Exception as e:
+                return (http.HTTPStatus.INTERNAL_SERVER_ERROR, [], str(e).encode())
+        elif path == "/ws":
+            return None # Proceed to WebSocket upgrade
+        else:
+            return (http.HTTPStatus.NOT_FOUND, [], b"Not Found")
+
     async def _ws_main(self):
-        async with websockets.serve(self.ws_handler, "0.0.0.0", 8765):
+        import http
+        # Bind BOTH HTTP and WebSocket to port 8000 to easily proxy through a single Cloudflare Tunnel
+        async with websockets.serve(self.ws_handler, "0.0.0.0", 8000, process_request=self.process_request):
             await asyncio.Future()
 
     def start_ws_server(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        print("[INFO] WebSocket Server running on port 8765")
+        print("[INFO] Unified Web & WebSocket Server running on port 8000")
         try:
             self.loop.run_until_complete(self._ws_main())
         except asyncio.CancelledError:
             pass
-
-    # --- HTTP SERVER LOGIC ---
-    def start_http_server(self):
-        # Serve the /dashboard folder
-        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
-        os.chdir(dashboard_dir)
-        handler = http.server.SimpleHTTPRequestHandler
-        # Handle Address already in use
-        socketserver.TCPServer.allow_reuse_address = True
-        try:
-            with socketserver.TCPServer(("0.0.0.0", 8000), handler) as httpd:
-                print("[INFO] HTTP Dashboard serving at port 8000 (Open this in your iPad/Phone)")
-                httpd.serve_forever()
-        except Exception as e:
-            print(f"[ERROR] HTTP Server failed to start: {e}")
 
     # --- MAIN STARTUP ---
     def start(self):
@@ -146,10 +150,7 @@ class HeadlessBrain:
         if self.reader.connect():
             print(f"[SUCCESS] Connected to {self.port}! Listening for CSI data...")
             
-            # Start HTTP Server in background thread
-            threading.Thread(target=self.start_http_server, daemon=True).start()
-            
-            # Start WebSocket Server in main thread (blocks forever)
+            # Start Unified Server in main thread (blocks forever)
             try:
                 self.start_ws_server()
             except KeyboardInterrupt:

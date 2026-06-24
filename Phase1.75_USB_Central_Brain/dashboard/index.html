@@ -359,10 +359,7 @@
 
         // WebSocket Connection
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let wsUrl = `${wsProtocol}//${window.location.host}/ws`;
-        if (window.location.hostname.startsWith("192.") || window.location.hostname === "localhost") {
-            wsUrl = `${wsProtocol}//${window.location.hostname}:8765`;
-        }
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
         
         const ws = new WebSocket(wsUrl);
 
