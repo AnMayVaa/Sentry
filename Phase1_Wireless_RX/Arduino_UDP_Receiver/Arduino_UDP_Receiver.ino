@@ -5,7 +5,7 @@
 // --- CONFIGURATION ---
 const char* ssid = "BUNDAOBUNTAI";
 const char* password = "ohm12345";
-const char* dest_ip = "192.168.1.2";
+const char* dest_ip = "192.168.1.8"; // MUST MATCH RASPBERRY PI IP!
 const int dest_port = 5000;
 
 WiFiUDP udp;
