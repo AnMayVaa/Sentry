@@ -29,7 +29,8 @@
             margin: 0;
             padding: 2vh 3vw;
             min-height: 100vh;
-            overflow-x: hidden;
+            overflow-x: auto; /* allow horizontal slide */
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 2vh;
@@ -204,6 +205,7 @@
             min-width: 300px;
             padding: 20px;
             position: relative;
+            overflow-x: auto; /* Enable sliding for the graph */
         }
 
         /* Custom Range Slider */
@@ -313,10 +315,14 @@
     <!-- Charts -->
     <div class="charts-container">
         <div class="glass chart-wrapper">
-            <canvas id="varianceChart"></canvas>
+            <div style="min-width: 600px; height: 100%;">
+                <canvas id="varianceChart"></canvas>
+            </div>
         </div>
         <div class="glass chart-wrapper">
-            <canvas id="rawChart"></canvas>
+            <div style="min-width: 600px; height: 100%;">
+                <canvas id="rawChart"></canvas>
+            </div>
         </div>
     </div>
 
