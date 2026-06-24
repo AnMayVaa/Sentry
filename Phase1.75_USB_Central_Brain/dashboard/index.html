@@ -194,12 +194,14 @@
         /* Charts */
         .charts-container {
             display: flex;
+            flex-wrap: wrap;
             gap: 25px;
             flex: 1;
             min-height: 0;
         }
         .chart-wrapper {
-            flex: 1;
+            flex: 1 1 400px; /* Flex-grow, shrink, and min-width */
+            min-width: 300px;
             padding: 20px;
             position: relative;
         }
@@ -259,7 +261,7 @@
         <h1>Sentry IoT <span style="color:var(--text-muted); font-size:20px; font-weight:400;">/ Edge Dashboard</span></h1>
         <div class="conn-status">
             <span class="pulse-dot" id="conn-dot" style="background-color: var(--warning);"></span>
-            <span id="connection-status" style="color: var(--warning);">Connecting to Brain...</span>
+            <span id="connection-status" style="color: var(--warning);">Connecting...</span>
         </div>
     </div>
 
@@ -271,17 +273,26 @@
                 <select id="port-select" style="flex:1;">
                     <option value="">Scanning for devices...</option>
                 </select>
-                <button onclick="changePort()">Bind Port</button>
+                <button onclick="changePort()">Connect</button>
             </div>
         </div>
         
         <div class="glass control-card">
-            <label>AI Sensitivity Threshold (Variance Trigger)</label>
+            <label>Sensitivity Threshold (Variance Trigger)</label>
             <div class="control-row">
                 <input type="range" id="threshold-slider" min="0.1" max="10.0" step="0.1" value="2.0" onchange="changeThreshold()">
                 <div style="background: rgba(0,0,0,0.2); padding: 8px 15px; border-radius: 8px; font-weight: bold; width: 45px; text-align: center;">
                     <span id="threshold-display">2.0</span>
                 </div>
+            </div>
+        </div>
+
+        <div class="glass control-card" style="flex: 1.5;">
+            <label>Quick Guide</label>
+            <div style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 5px;">
+                1. Select your <b>ESP32 USB port</b> and click Connect.<br>
+                2. Adjust <b>Threshold</b> to tune sensitivity. If variance falls below this line, it forces STATIC.<br>
+                3. For best accuracy, ensure RX and TX antennas have clear line of sight.
             </div>
         </div>
     </div>
@@ -290,7 +301,7 @@
     <div class="status-container">
         <div class="glass state-panel state-static" id="state-panel">
             <div id="state-box">STATIC</div>
-            <div style="color: rgba(255,255,255,0.8); margin-top: 10px; font-weight: 600; letter-spacing: 2px;">LIVE AI INFERENCE</div>
+            <div style="color: rgba(255,255,255,0.8); margin-top: 10px; font-weight: 600; letter-spacing: 2px;">LIVE INFERENCE</div>
         </div>
         
         <div class="glass metric-panel">
@@ -390,7 +401,7 @@
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-            document.getElementById('connection-status').innerText = 'Connected to Brain';
+            document.getElementById('connection-status').innerText = 'Connected';
             document.getElementById('connection-status').style.color = 'var(--success)';
             document.getElementById('conn-dot').style.backgroundColor = 'var(--success)';
             ws.send(JSON.stringify({command: "get_config"}));
