@@ -514,6 +514,18 @@
                 }
                 this.rawChart.update('none');
             }
+
+            destroy() {
+                if (this.varianceChart) {
+                    this.varianceChart.destroy();
+                }
+                if (this.rawChart) {
+                    this.rawChart.destroy();
+                }
+                if (this.container && this.container.parentNode) {
+                    this.container.parentNode.removeChild(this.container);
+                }
+            }
         }
 
         // WebSocket Connection
@@ -581,7 +593,7 @@
             // Remove missing nodes (stale cleanup)
             for (const loc in activeNodes) {
                 if (!(loc in data.nodes)) {
-                    activeNodes[loc].container.remove();
+                    activeNodes[loc].destroy();
                     delete activeNodes[loc];
                 }
             }
