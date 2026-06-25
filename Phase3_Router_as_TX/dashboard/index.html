@@ -542,6 +542,48 @@
             }
         }
 
+        // Buffered rendering - decouple WS messages from chart repaints
+        let pendingData = null;
+        let rafScheduled = false;
+
+        function renderFrame() {
+            rafScheduled = false;
+            if (!pendingData) return;
+            const data = pendingData;
+            pendingData = null;
+
+            // State Panel
+            const statePanel = document.getElementById('state-panel');
+            const stateBox = document.getElementById('state-box');
+            statePanel.classList.remove('state-static', 'state-movement', 'state-fall');
+            if (data.state === 2) {
+                stateBox.innerText = 'FALL DETECTED';
+                statePanel.classList.add('state-fall');
+            } else if (data.state === 1) {
+                stateBox.innerText = 'MOVEMENT';
+                statePanel.classList.add('state-movement');
+            } else {
+                stateBox.innerText = 'STATIC';
+                statePanel.classList.add('state-static');
+            }
+
+            // Metrics
+            document.getElementById('variance-val').innerText = data.variance.toFixed(2);
+
+            // Variance Chart
+            let varData = varianceChart.data.datasets[0].data;
+            varData.shift();
+            varData.push(data.variance);
+            let threshData = varianceChart.data.datasets[1].data;
+            threshData.shift();
+            threshData.push(data.threshold);
+            varianceChart.update('none');
+
+            // Raw Chart
+            rawChart.data.datasets[0].data = data.amplitudes;
+            rawChart.update('none');
+        }
+
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             
@@ -610,40 +652,12 @@
                 return;
             }
             
-            // Handle Live Data
-            const statePanel = document.getElementById('state-panel');
-            const stateBox = document.getElementById('state-box');
-            
-            // Reset Classes
-            statePanel.classList.remove('state-static', 'state-movement', 'state-fall');
-
-            if (data.state === 2) {
-                stateBox.innerText = 'FALL DETECTED';
-                statePanel.classList.add('state-fall');
-            } else if (data.state === 1) {
-                stateBox.innerText = 'MOVEMENT';
-                statePanel.classList.add('state-movement');
-            } else {
-                stateBox.innerText = 'STATIC';
-                statePanel.classList.add('state-static');
+            // Buffer live data and schedule a render on next animation frame
+            pendingData = data;
+            if (!rafScheduled) {
+                rafScheduled = true;
+                requestAnimationFrame(renderFrame);
             }
-
-            // Update Metrics
-            document.getElementById('variance-val').innerText = data.variance.toFixed(2);
-
-            // Update Charts
-            let varData = varianceChart.data.datasets[0].data;
-            varData.shift();
-            varData.push(data.variance);
-            
-            let threshData = varianceChart.data.datasets[1].data;
-            threshData.shift();
-            threshData.push(data.threshold);
-            
-            varianceChart.update('none');
-
-            rawChart.data.datasets[0].data = data.amplitudes;
-            rawChart.update('none');
         };
     </script>
 </body>

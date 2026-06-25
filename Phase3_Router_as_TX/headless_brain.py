@@ -301,14 +301,14 @@ class HeadlessBrain:
                 print(f"[{time.strftime('%H:%M:%S')}] STATE CHANGE: {state_names[new_state]} (Var: {current_variance:.2f})")
                 self.current_state = new_state
 
-            # --- IOT BROADCAST (THROTTLED to ~15 FPS to prevent UI Lag) ---
+            # --- IOT BROADCAST (30 FPS to match CSI rate) ---
             if self.loop and self.loop.is_running():
-                if current_time - self.last_broadcast_time > 0.06: # 15 FPS Throttle
+                if current_time - self.last_broadcast_time > 0.033: # 30 FPS
                     payload = {
                         "state": self.current_state,
-                        "variance": current_variance,
+                        "variance": round(current_variance, 2),
                         "threshold": self.threshold,
-                        "amplitudes": amplitudes
+                        "amplitudes": [round(a, 1) for a in amplitudes]
                     }
                     asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
                     self.last_broadcast_time = current_time

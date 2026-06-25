@@ -74,7 +74,7 @@ void setup() {
     Serial.begin(460800);
     pinMode(0, INPUT_PULLUP); // BOOT button for SOS
     
-    csi_queue = xQueueCreate(20, sizeof(csi_packet_t));
+    csi_queue = xQueueCreate(30, sizeof(csi_packet_t));
     
     Serial.println("Connecting to WiFi...");
     WiFi.mode(WIFI_STA);
@@ -183,33 +183,20 @@ void loop() {
     //     delay(1000); // Debounce
     // }
     
-    // 4. Process CSI Queue and send UDP packets in batches
-    int waiting = uxQueueMessagesWaiting(csi_queue);
-    if (waiting >= 5 && target_resolved) {
-        udp.beginPacket(target_ip, dest_port);
-        
-        for (int b = 0; b < waiting; b++) {
-            csi_packet_t pkt;
-            if (xQueueReceive(csi_queue, &pkt, 0) == pdTRUE) {
-                if (pkt.is_sos) {
-                    udp.print("SOS_ALERT\n");
-                    Serial.println("SOS_ALERT");
-                } else {
-                    udp.printf("CSI_DATA,%d,%d,%d,", pkt.mac[0], pkt.rssi, pkt.len);
-                    Serial.printf("CSI_DATA,%d,%d,%d,", pkt.mac[0], pkt.rssi, pkt.len);
-                    for (int i = 0; i < pkt.len; i++) {
-                        udp.print((int)pkt.buf[i]);
-                        Serial.print((int)pkt.buf[i]);
-                        if (i < pkt.len - 1) {
-                            udp.print(",");
-                            Serial.print(",");
-                        }
-                    }
-                    udp.print("\n");
-                    Serial.print("\n");
-                }
-            }
+    // 4. Process CSI Queue - send each packet IMMEDIATELY (no batching!)
+    csi_packet_t pkt;
+    while (xQueueReceive(csi_queue, &pkt, 0) == pdTRUE && target_resolved) {
+        // Build the string into a buffer first, then send in one shot
+        char txBuf[512];
+        int pos = snprintf(txBuf, sizeof(txBuf), "CSI_DATA,%d,%d,%d", pkt.mac[0], pkt.rssi, pkt.len);
+        for (int i = 0; i < pkt.len && pos < (int)sizeof(txBuf) - 5; i++) {
+            pos += snprintf(txBuf + pos, sizeof(txBuf) - pos, ",%d", pkt.buf[i]);
         }
+        txBuf[pos++] = '\n';
+        txBuf[pos] = '\0';
+
+        udp.beginPacket(target_ip, dest_port);
+        udp.write((const uint8_t*)txBuf, pos);
         udp.endPacket();
     }
 }
