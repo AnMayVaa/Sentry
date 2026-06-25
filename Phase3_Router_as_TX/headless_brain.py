@@ -62,16 +62,45 @@ class HeadlessBrain:
         self.connected_clients = set()
         self.loop = None
         
-        # Ping loop for TX_ROUTER mode
+        # Ping loop for TX_ROUTER mode — always uses Wi-Fi UDP, never serial!
+        self.esp32_ip = None
         self.ping_thread = threading.Thread(target=self._router_ping_loop, daemon=True)
         self.ping_thread.start()
+        
+        # Background thread to discover ESP32's IP via mDNS
+        self._discover_esp32_ip()
+
+    def _discover_esp32_ip(self):
+        """Try to resolve esp32-csi.local via mDNS so we can UDP-ping it."""
+        import socket
+        def _resolve():
+            while not self.esp32_ip:
+                try:
+                    ip = socket.gethostbyname("esp32-csi.local")
+                    self.esp32_ip = ip
+                    print(f"[INFO] Discovered ESP32 IP via mDNS: {ip}")
+                except Exception:
+                    pass
+                time.sleep(2)
+        threading.Thread(target=_resolve, daemon=True).start()
 
     def _router_ping_loop(self):
+        import socket
+        ping_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         while True:
-            if self.tx_mode == "TX_ROUTER" and self.reader:
-                if hasattr(self.reader, 'send_command'):
-                    # Send a dummy ping packet at ~30Hz (33ms)
-                    self.reader.send_command("PING")
+            if self.tx_mode == "TX_ROUTER":
+                # Always send UDP over Wi-Fi to stimulate the router
+                if self.esp32_ip:
+                    try:
+                        ping_sock.sendto(b"PING", (self.esp32_ip, 5000))
+                    except Exception:
+                        pass
+                # Also use the reader's send_command if it's UDP-based
+                elif self.reader and hasattr(self.reader, 'last_client_addr') and self.reader.last_client_addr:
+                    try:
+                        self.reader.send_command("PING")
+                    except Exception:
+                        pass
             time.sleep(0.033)
 
     # --- WEBSOCKET SERVER LOGIC ---
