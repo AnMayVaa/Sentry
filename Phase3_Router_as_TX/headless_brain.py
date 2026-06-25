@@ -325,8 +325,8 @@ class HeadlessBrain:
                     hist_arr = np.array(self.history)
                     features = extract_features_np(hist_arr)
                     
-                    raw_pred = self.ml_model.predict([features])[0]
-                    current_variance = features[0]
+                    raw_pred = int(self.ml_model.predict([features])[0])
+                    current_variance = float(features[0])
                     self.last_variance = current_variance
                     
                     # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
@@ -359,10 +359,10 @@ class HeadlessBrain:
 
             # --- Store latest payload for the broadcast loop ---
             self._latest_payload = {
-                "state": self.current_state,
-                "variance": round(current_variance, 2),
-                "threshold": self.threshold,
-                "amplitudes": [round(a, 1) for a in amplitudes]
+                "state": int(self.current_state),
+                "variance": round(float(current_variance), 2),
+                "threshold": float(self.threshold),
+                "amplitudes": [round(float(a), 1) for a in amplitudes]
             }
         finally:
             self._processing = False
