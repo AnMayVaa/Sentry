@@ -13,7 +13,7 @@ This document serves as the master knowledge base for any AI assisting with this
   - The Pi runs the heavy Machine Learning inference, Web Server, and WebSocket Server.
 
 ## 3. Software Stack & Codebase
-The core logic resides in the `Phase2_Central_Brain` directory:
+The core logic resides in the `Phase3_Router_as_TX` directory:
 - **`headless_brain.py`**: The main backend script. It extracts features (variance), runs them through a pre-trained `scikit-learn` Random Forest model, and broadcasts the state and live data via WebSockets. It acts as a **Universal Brain**, supporting both USB PySerial connections and Wireless UDP Wi-Fi connections via a dynamic mode switcher.
 - **`serial_reader.py`**: Parses raw CSI integers from the ESP32 via physical USB cable.
 - **`udp_reader.py`**: Parses raw CSI integers wirelessly over the local Wi-Fi network (Port 5000).
@@ -21,7 +21,7 @@ The core logic resides in the `Phase2_Central_Brain` directory:
 - **`line_notifier.py`**: Sends an emergency alert message to a LINE Group via the LINE Notify API when a Fall is confirmed.
 
 ## 4. Edge Server Deployment (Raspberry Pi 5)
-- **Path:** `/home/ohmpatumwan/Sentry/Phase2_Central_Brain`
+- **Path:** `/home/ohmpatumwan/Sentry/Phase3_Router_as_TX`
 - **Python Environment:** Runs natively or via `venv` on the Pi (`pandas`, `scikit-learn`, `websockets`, `pyserial`).
 - **Systemd Service:** `sentry.service`
   - The backend runs automatically on boot as a Linux background service.

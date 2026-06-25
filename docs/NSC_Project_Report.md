@@ -77,5 +77,18 @@ This document tracks the progress, methodologies, conflicts, and engineering sol
 *   **Conflict 2 (Firmware Fragmentation)**: Switching between Phase 1.75 (USB) and Phase 2 (UDP) required the user to constantly open the Arduino IDE and re-flash the ESP32 microcontroller with different codebases.
 *   **Solution 2**: We engineered a **Universal Firmware** (`Arduino_UDP_Receiver.ino`). The ESP32 now processes the high-speed CSI packets and simultaneously prints them to the physical USB serial port AND blasts them over the Wi-Fi UDP network at the exact same time. The user flashes the ESP32 one final time, after which the hardware permanently supports both modes.
 
+## Phase 3: "God Firmware", Home Router TX & Zero-Lag Architecture
+**Goal**: Integrate a Home Router as the primary Wi-Fi wave transmitter to eliminate the need for a dedicated TX ESP32, and mathematically optimize the full pipeline to achieve zero-lag, 30fps real-time inference.
+
+*   **Approach**: We developed the `Phase3_Router_as_TX` pipeline, which repurposes the existing home Wi-Fi router to blanket the room with OFDM Wi-Fi waves. The ESP32 (flashed with `Phase3_God_Firmware.ino`) passively sniffs these ambient waves. The Python backend stimulates the router by sending persistent UDP pings over Wi-Fi.
+*   **Conflict 1 (ESP32 Serial Bottleneck)**: The system experienced extreme processing lag (~167ms delays). The ESP32 was artificially queueing CSI packets, and its blocking `Serial.print()` character-by-character UART output completely bottlenecked the CPU.
+*   **Solution 1**: We refactored the ESP32 firmware into the "God Firmware". We stripped out the packet-batching delay and replaced the slow `Serial.print()` loop with an ultra-efficient, single-call `Serial.write()` that dumps a pre-formatted memory buffer instantly. This reduced hardware latency to near-zero.
+*   **Conflict 2 (Python ML Hot-Path Overhead)**: The Raspberry Pi's ML inference fell further and further behind real-time, accumulating an infinite backlog of unprocessed frames. This occurred because the `headless_brain.py` hot-path created and destroyed Pandas `DataFrame` objects 30 times a second.
+*   **Solution 2**: We completely eliminated Pandas from the real-time loop. We engineered `extract_features_np` to perform high-speed math directly on native NumPy arrays, and implemented a thread-safe frame-dropping mechanism (`self._processing` lock) that intelligently skips frames instead of queuing them, ensuring the ML model never falls behind real-time.
+*   **Conflict 3 (Browser Render Jank)**: The web dashboard lagged and stuttered because `Chart.js` tried to forcefully repaint the DOM on every single incoming WebSocket message (30Hz).
+*   **Solution 3**: We implemented a frame-buffering system in JavaScript. The incoming WebSocket data is decoupled from the UI thread, and we utilize the browser's native `requestAnimationFrame` API to batch chart updates smoothly into the hardware vsync cycle (60fps).
+*   **Conflict 4 (NumPy JSON Serialization Crash)**: The Python WebSocket server would sporadically crash and systemd would auto-restart it, causing the dashboard to continuously disconnect and reconnect. The `scikit-learn` Random Forest prediction returned a NumPy `int32` datatype, which standard Python `json.dumps()` could not serialize.
+*   **Solution 4**: We applied strict type casting (`int()` and `float()`) to all NumPy outputs in the `headless_brain.py` before building the WebSocket JSON payload. This permanently solved the crash and stabilized the 24/7 web server.
+
 ---
 *Document will be updated as new phases are completed.*

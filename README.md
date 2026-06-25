@@ -14,10 +14,12 @@ The system leverages a Custom Hardware Pipeline (ESP32), a Hybrid Sequence State
 - **Edge Compute Central Brain:** Deploys a Raspberry Pi 5 acting as a headless ML processor. It hosts a Unified HTTP/WebSocket Server and leverages a persistent Dockerized Cloudflare Tunnel to expose the system globally without opening router ports.
 - **Universal Edge Dashboard:** A stunning, dark-mode, responsive web application that renders 15 FPS hardware-accelerated graphs of the mathematical Variance and the raw 52-subcarrier OFDM snapshot. Features a Two-Way syncing control panel to remotely toggle hardware connections ([USB Mode] vs [Wireless UDP Mode]) and adjust AI sensitivity thresholds on the fly from any device.
 - **mDNS Auto-Discovery:** The ESP32 receiver dynamically resolves the Raspberry Pi's hostname on the local network, making the wireless UDP system completely immune to DHCP IP address changes.
+- **Zero-Lag Architecture:** Pandas overhead was stripped in favor of raw NumPy arrays, and ESP32 UART bottlenecks were removed using single-call buffer writes, allowing 30fps real-time inference without frame backlog.
+- **Home Router TX Mode:** Repurposes the existing home Wi-Fi router as the CSI transmitter via persistent UDP stimulation, eliminating the need for a dedicated TX ESP32 node.
 
 ## Project Structure
 - `/control_app`: Contains the legacy Phase 1 Python GUI (`main.py`), ML pipeline (`train_model.py`), and LINE notifier.
-- `/Phase2_Central_Brain`: Contains the modern headless Edge Compute backend (`headless_brain.py`) and the responsive Glassmorphism Universal Web UI (`dashboard/index.html`).
+- `/Phase3_Router_as_TX`: Contains the modern headless Edge Compute backend (`headless_brain.py`), the responsive Glassmorphism Universal Web UI (`dashboard/index.html`), and the ultimate God Firmware.
 - `/tx_node`: ESP32 Transmitter firmware (injects high-speed OFDM packets and acts as the SOS button).
 - `/rx_node`: ESP32 Receiver firmware (Promiscuous mode Wi-Fi sniffer).
 - `/docs/scripts`: Python scripts for generating academic poster graphs and running the Mycelium Simulator.
