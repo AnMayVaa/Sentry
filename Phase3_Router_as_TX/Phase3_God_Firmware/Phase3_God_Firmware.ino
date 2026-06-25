@@ -59,15 +59,11 @@ void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info) {
         csi_packet_t pkt;
         memset(&pkt, 0, sizeof(csi_packet_t));
         
-        if (info->rx_ctrl.sig_len > 100) {
-            pkt.is_sos = true;
-        } else {
-            pkt.is_sos = false;
-            memcpy(pkt.mac, info->mac, 6);
-            pkt.rssi = info->rx_ctrl.rssi;
-            pkt.len = info->len > 128 ? 128 : info->len;
-            memcpy(pkt.buf, info->buf, pkt.len);
-        }
+        pkt.is_sos = false;
+        memcpy(pkt.mac, info->mac, 6);
+        pkt.rssi = info->rx_ctrl.rssi;
+        pkt.len = info->len > 128 ? 128 : info->len;
+        memcpy(pkt.buf, info->buf, pkt.len);
         
         // Push safely to queue
         xQueueSendFromISR(csi_queue, &pkt, NULL);
@@ -170,13 +166,13 @@ void loop() {
     }
 
     // 3. Check for SOS Button
-    if (digitalRead(0) == LOW && target_resolved) {
-        udp.beginPacket(target_ip, dest_port);
-        udp.print("SOS_ALERT\n");
-        udp.endPacket();
-        Serial.println("SOS_ALERT");
-        delay(1000); // Debounce
-    }
+    // if (digitalRead(0) == LOW && target_resolved) {
+    //     udp.beginPacket(target_ip, dest_port);
+    //     udp.print("SOS_ALERT\n");
+    //     udp.endPacket();
+    //     Serial.println("SOS_ALERT");
+    //     delay(1000); // Debounce
+    // }
     
     // 4. Process CSI Queue and send UDP packets in batches
     int waiting = uxQueueMessagesWaiting(csi_queue);
