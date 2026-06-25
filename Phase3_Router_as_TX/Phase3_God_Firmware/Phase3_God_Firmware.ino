@@ -198,5 +198,8 @@ void loop() {
         udp.beginPacket(target_ip, dest_port);
         udp.write((const uint8_t*)txBuf, pos);
         udp.endPacket();
+
+        // Also mirror to Serial for USB mode (single write, non-blocking)
+        Serial.write(txBuf, pos);
     }
 }
