@@ -43,6 +43,7 @@ class NodeState:
         self.last_line_alert_time = 0
         self.current_state = 0 # 0=STATIC, 1=MOVEMENT, 2=FALL
         self.last_variance = 0.0
+        self.last_seen = time.time()
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -256,10 +257,31 @@ class HeadlessBrain:
         """Fixed-rate broadcast loop. Runs independently at 15Hz.
         Always sends only the LATEST state - never queues up."""
         while True:
-            if self._latest_payload and self.connected_clients:
-                payload = self._latest_payload
-                self._latest_payload = None
+            current_time = time.time()
+            
+            # 1. Clean up stale nodes (no data for 5 seconds)
+            stale_nodes = [loc for loc, node in self.nodes.items() if current_time - node.last_seen > 5.0]
+            for loc in stale_nodes:
+                print(f"[IOT] Node disconnected/timed out: {loc}")
+                del self.nodes[loc]
+                
+            # 2. Build payload of ALL active nodes
+            if self.connected_clients:
+                payload = {"type": "data", "nodes": {}}
+                for loc, node in self.nodes.items():
+                    amps = node.history[-1] if len(node.history) > 0 else [0]*52
+                    # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
+                    if isinstance(amps, str):
+                        amps = [0]*52
+                        
+                    payload["nodes"][loc] = {
+                        "state": int(node.current_state),
+                        "variance": round(float(node.last_variance), 2),
+                        "threshold": float(self.threshold),
+                        "amplitudes": [round(float(a), 1) for a in amps]
+                    }
                 await self.broadcast_ws(payload)
+                
             await asyncio.sleep(0.066)  # 15 FPS - perfect for web dashboard over Cloudflare
 
     async def _ws_main(self):
@@ -304,6 +326,7 @@ class HeadlessBrain:
         if location_name not in self.nodes:
             self.nodes[location_name] = NodeState()
         node = self.nodes[location_name]
+        node.last_seen = current_time
         
         # --- PHASE 4: SOS BUTTON INTERRUPT ---
         if isinstance(amplitudes, str) and amplitudes == "SOS":
@@ -363,17 +386,6 @@ class HeadlessBrain:
                             state_names = {0: "STATIC", 1: "MOVEMENT", 2: "FALL DETECTED"}
                             print(f"[{time.strftime('%H:%M:%S')}] STATE [{location_name}]: {state_names[new_state]} (Var: {current_variance:.2f})")
                             node.current_state = new_state
-
-            # --- Store latest payload for the broadcast loop ---
-            if self._latest_payload is None or getattr(self._latest_payload, 'get', lambda x: None)("type") != "data":
-                self._latest_payload = {"type": "data", "nodes": {}}
-                
-            self._latest_payload["nodes"][location_name] = {
-                "state": int(node.current_state),
-                "variance": round(float(current_variance), 2),
-                "threshold": float(self.threshold),
-                "amplitudes": [round(float(a), 1) for a in amplitudes]
-            }
         finally:
             node._processing = False
 

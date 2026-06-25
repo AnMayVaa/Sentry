@@ -386,6 +386,7 @@
         class NodeCard {
             constructor(locationName) {
                 this.locationName = locationName;
+                this.idSafeName = locationName.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
                 this.container = document.createElement('div');
                 this.container.className = 'node-card';
                 this.container.style.borderTop = '1px solid rgba(255,255,255,0.1)';
@@ -396,24 +397,24 @@
                         📍 Location: ${locationName}
                     </div>
                     <div class="status-container" style="display: flex; gap: 20px; margin-bottom: 20px;">
-                        <div class="glass state-panel state-static" id="state-panel-${locationName}" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 20px;">
-                            <div id="state-box-${locationName}" style="font-size: 48px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 2;">STATIC</div>
+                        <div class="glass state-panel state-static" id="state-panel-${this.idSafeName}" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 20px;">
+                            <div id="state-box-${this.idSafeName}" style="font-size: 48px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 2;">STATIC</div>
                             <div style="color: rgba(255,255,255,0.8); margin-top: 10px; font-weight: 600; letter-spacing: 2px;">LIVE INFERENCE</div>
                         </div>
                         <div class="glass metric-panel" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 20px;">
                             <div class="metric-label" style="font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Temporal Variance</div>
-                            <div class="metric-value" id="variance-val-${locationName}" style="font-size: 48px; font-weight: 800; color: var(--primary); text-shadow: 0 0 20px rgba(0, 210, 255, 0.4);">0.00</div>
+                            <div class="metric-value" id="variance-val-${this.idSafeName}" style="font-size: 48px; font-weight: 800; color: var(--primary); text-shadow: 0 0 20px rgba(0, 210, 255, 0.4);">0.00</div>
                         </div>
                     </div>
                     <div class="charts-container" style="display: flex; flex-wrap: wrap; gap: 25px;">
                         <div class="glass chart-wrapper" style="flex: 1 1 400px; min-width: 300px; padding: 20px; position: relative; overflow-x: auto;">
                             <div style="min-width: 600px; height: 100%;">
-                                <canvas id="varianceChart-${locationName}"></canvas>
+                                <canvas id="varianceChart-${this.idSafeName}"></canvas>
                             </div>
                         </div>
                         <div class="glass chart-wrapper" style="flex: 1 1 400px; min-width: 300px; padding: 20px; position: relative; overflow-x: auto;">
                             <div style="min-width: 600px; height: 100%;">
-                                <canvas id="rawChart-${locationName}"></canvas>
+                                <canvas id="rawChart-${this.idSafeName}"></canvas>
                             </div>
                         </div>
                     </div>
@@ -422,7 +423,7 @@
                 document.getElementById('nodes-container').appendChild(this.container);
                 
                 // Initialize Charts
-                const varCtx = document.getElementById(`varianceChart-${locationName}`).getContext('2d');
+                const varCtx = document.getElementById(`varianceChart-${this.idSafeName}`).getContext('2d');
                 this.varianceChart = new Chart(varCtx, {
                     type: 'line',
                     data: {
@@ -460,7 +461,7 @@
                     }
                 });
 
-                const rawCtx = document.getElementById(`rawChart-${locationName}`).getContext('2d');
+                const rawCtx = document.getElementById(`rawChart-${this.idSafeName}`).getContext('2d');
                 this.rawChart = new Chart(rawCtx, {
                     type: 'line',
                     data: {
@@ -490,9 +491,10 @@
             }
             
             update(data) {
-                const statePanel = document.getElementById(`state-panel-${this.locationName}`);
-                const stateBox = document.getElementById(`state-box-${this.locationName}`);
-                statePanel.className = 'glass state-panel node-state-panel'; // Reset
+                const stateBox = document.getElementById(`state-box-${this.idSafeName}`);
+                const statePanel = document.getElementById(`state-panel-${this.idSafeName}`);
+                
+                statePanel.classList.remove('state-static', 'state-movement', 'state-fall');
                 if (data.state === 2) {
                     stateBox.innerText = 'FALL DETECTED';
                     statePanel.classList.add('state-fall');
@@ -504,7 +506,7 @@
                     statePanel.classList.add('state-static');
                 }
 
-                document.getElementById(`variance-val-${this.locationName}`).innerText = data.variance.toFixed(2);
+                document.getElementById(`variance-val-${this.idSafeName}`).innerText = data.variance.toFixed(2);
 
                 let varData = this.varianceChart.data.datasets[0].data;
                 varData.shift();
@@ -604,6 +606,15 @@
             const data = pendingData;
             pendingData = null;
 
+            // Remove missing nodes (stale cleanup)
+            for (const loc in activeNodes) {
+                if (!(loc in data.nodes)) {
+                    activeNodes[loc].container.remove();
+                    delete activeNodes[loc];
+                }
+            }
+
+            // Update or add current nodes
             for (const [locationName, nodeData] of Object.entries(data.nodes)) {
                 if (!activeNodes[locationName]) {
                     activeNodes[locationName] = new NodeCard(locationName);
