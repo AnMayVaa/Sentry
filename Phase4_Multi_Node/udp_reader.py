@@ -59,7 +59,7 @@ class UDPReader:
                         parts = line.split(',')
                         location_name = parts[1] if len(parts) > 1 else "Unknown"
                         if self.data_callback:
-                            self.data_callback("SOS", 0, location_name)
+                            self.data_callback("SOS", 0, location_name, reader_id=addr[0])
                         continue
                         
                     if line.startswith("CSI_DATA"):
@@ -86,7 +86,7 @@ class UDPReader:
                                 valid_amplitudes = amplitudes[1:28] + amplitudes[38:64]
                                 
                                 if self.data_callback:
-                                    self.data_callback(valid_amplitudes, rssi, location_name)
+                                    self.data_callback(valid_amplitudes, rssi, location_name, reader_id=addr[0])
             except socket.timeout:
                 continue
             except Exception as e:

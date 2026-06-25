@@ -153,7 +153,7 @@ class HeadlessBrain:
                         port = int(data.get("port", 5000))
                         key = f"UDP_{port}"
                         if key not in self.readers:
-                            reader = UDPReader(port, functools.partial(self.data_received, reader_id=key))
+                            reader = UDPReader(port, self.data_received)
                             if reader.connect():
                                 self.readers[key] = reader
                                 cmd_str = "MODE_ROUTER" if self.tx_mode == "TX_ROUTER" else "MODE_TX_NODE"
@@ -314,7 +314,7 @@ class HeadlessBrain:
         
         # --- PHASE 4: SOS BUTTON INTERRUPT ---
         if isinstance(amplitudes, str) and amplitudes == "SOS":
-            print(f"[{time.strftime('%H:%M:%S')}] \U0001f6a8 SOS BUTTON PRESSED IN {location_name}! \U0001f6a8")
+            print(f"[{time.strftime('%H:%M:%S')}] SOS BUTTON PRESSED IN {location_name}!")
             if current_time - node.last_line_alert_time > 60.0:
                 threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
                 node.last_line_alert_time = current_time
@@ -358,7 +358,7 @@ class HeadlessBrain:
                             
                         if (current_time - node.potential_fall_time < 3.0) and mode_pred == 0:
                             if current_time - node.last_line_alert_time > 60.0:
-                                print(f"\n[{time.strftime('%H:%M:%S')}] \U0001f6a8 FALL DETECTED IN {location_name}! \U0001f6a8")
+                                print(f"\n[{time.strftime('%H:%M:%S')}] FALL DETECTED IN {location_name}!")
                                 threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
                                 node.last_line_alert_time = current_time
                         
