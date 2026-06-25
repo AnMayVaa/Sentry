@@ -546,6 +546,12 @@
             document.getElementById('threshold-display').innerText = parseFloat(this.value).toFixed(1);
         });
 
+        let currentTxMode = "TX_DEDICATED";
+        
+        function setTxMode(modeStr) {
+            ws.send(JSON.stringify({command: "set_tx_mode", tx_mode: modeStr}));
+        }
+
         function toggleSerial(port, isConnected) {
             if (isConnected) {
                 ws.send(JSON.stringify({command: "disconnect_serial", port: port}));
