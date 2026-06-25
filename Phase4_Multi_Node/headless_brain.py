@@ -115,18 +115,8 @@ class HeadlessBrain:
         self.connected_clients.add(websocket)
         print(f"[IOT] New Web Dashboard Connected! ({len(self.connected_clients)} total)")
         
-        # Send initial configuration
-        ports = [p.device for p in serial.tools.list_ports.comports()]
-        init_msg = json.dumps({
-            "type": "config",
-            "threshold": self.threshold,
-            "port": self.port,
-            "available_ports": ports
-        })
-        try:
-            await websocket.send(init_msg)
-        except:
-            pass
+        # Send initial configuration to all clients (including this new one)
+        await self.broadcast_config()
 
         try:
             async for message in websocket:
