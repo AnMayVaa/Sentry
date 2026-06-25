@@ -12,6 +12,7 @@ import asyncio
 import websockets
 import http.server
 import socketserver
+import functools
 
 import serial.tools.list_ports
 from serial_reader import SerialReader
@@ -130,9 +131,11 @@ class HeadlessBrain:
                     elif data.get("command") == "connect_serial":
                         port = data.get("port")
                         if port and port not in self.readers:
-                            reader = SerialReader(port, 460800, self.data_received)
+                            reader = SerialReader(port, 460800, functools.partial(self.data_received, reader_id=port))
                             if reader.connect():
                                 self.readers[port] = reader
+                                cmd_str = "MODE_ROUTER" if self.tx_mode == "TX_ROUTER" else "MODE_TX_NODE"
+                                reader.send_command(cmd_str)
                                 print(f"[IOT] Connected to {port}")
                             else:
                                 print(f"[IOT] Failed to connect to {port}")
@@ -150,9 +153,11 @@ class HeadlessBrain:
                         port = int(data.get("port", 5000))
                         key = f"UDP_{port}"
                         if key not in self.readers:
-                            reader = UDPReader(port, self.data_received)
+                            reader = UDPReader(port, functools.partial(self.data_received, reader_id=key))
                             if reader.connect():
                                 self.readers[key] = reader
+                                cmd_str = "MODE_ROUTER" if self.tx_mode == "TX_ROUTER" else "MODE_TX_NODE"
+                                reader.send_command(cmd_str)
                                 print(f"[IOT] Listening on UDP {port}")
                             else:
                                 print(f"[IOT] Failed to bind to UDP {port}")
@@ -293,7 +298,13 @@ class HeadlessBrain:
                 r.disconnect()
 
     # --- CSI DATA PROCESSING ---
-    def data_received(self, amplitudes, rssi, location_name="Unknown"):
+    def data_received(self, amplitudes, rssi, location_name="Unknown", reader_id=None):
+        if reader_id:
+            # Prefix location_name with port/reader ID if not already there, 
+            # so multiple ESP32s with the exact same Arduino string don't merge/sum their data blocks!
+            if not location_name.startswith(f"[{reader_id}]"):
+                location_name = f"[{reader_id}] {location_name}"
+                
         current_time = time.time()
         
         if location_name not in self.nodes:
