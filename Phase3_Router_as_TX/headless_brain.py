@@ -58,6 +58,7 @@ class HeadlessBrain:
         self.potential_fall_time = 0
         self.last_line_alert_time = 0
         self.current_state = 0 # 0=STATIC, 1=MOVEMENT, 2=FALL
+        self.last_variance = 0.0
         
         self.reader = None
         
@@ -297,7 +298,7 @@ class HeadlessBrain:
             self.history.append(amplitudes)
             self.frame_count += 1
             
-            current_variance = 0.0
+            current_variance = self.last_variance
             
             if len(self.history) >= 45:
                 # Run ML inference every 2nd frame (15Hz) — plenty for fall detection
@@ -308,6 +309,7 @@ class HeadlessBrain:
                     
                     raw_pred = self.ml_model.predict([features])[0]
                     current_variance = features[0]
+                    self.last_variance = current_variance
                     
                     # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
                     if current_variance < self.threshold:
