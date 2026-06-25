@@ -47,23 +47,7 @@ class NodeState:
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
-        self.port = port
-        self.udp_port = 5000
-        self.mode = "USB"  # 'USB' or 'UDP'
-        self.tx_mode = "TX_DEDICATED" # 'TX_DEDICATED' or 'TX_ROUTER'
-        self.threshold = threshold
-        
-        self.nodes = {} # Dictionary mapping location_name -> NodeState
-        
-        self.ml_model = None
-        try:
-            self.ml_model = joblib.load("fall_detection_model.pkl")
-            print("[INFO] Loaded Fall Detection ML model successfully!")
-        except Exception as e:
-            print(f"[WARNING] Could not load ML model: {e}")
-            sys.exit(1)
-        
-        self.reader = None
+        self.readers = {} # port_name -> Reader instance
         
         # IoT Server Variables
         self.connected_clients = set()
@@ -104,11 +88,13 @@ class HeadlessBrain:
                     except Exception:
                         pass
                 # Also use the reader's send_command if it's UDP-based
-                elif self.reader and hasattr(self.reader, 'last_client_addr') and self.reader.last_client_addr:
-                    try:
-                        self.reader.send_command("PING")
-                    except Exception:
-                        pass
+                elif f"UDP_{self.udp_port}" in self.readers:
+                    reader = self.readers[f"UDP_{self.udp_port}"]
+                    if hasattr(reader, 'last_client_addr') and reader.last_client_addr:
+                        try:
+                            reader.send_command("PING")
+                        except Exception:
+                            pass
             time.sleep(0.033)
 
     # --- WEBSOCKET SERVER LOGIC ---
@@ -138,56 +124,44 @@ class HeadlessBrain:
                         print(f"[IOT] Threshold updated to {self.threshold}")
                         await self.broadcast_config()
                         
-                    elif data.get("command") == "set_mode":
-                        self.mode = data.get("mode", "USB")
-                        print(f"[IOT] Switching mode to {self.mode}...")
-                        if self.reader:
-                            self.reader.disconnect()
-                        if self.mode == "USB":
-                            self.reader = SerialReader(self.port, 460800, self.data_received)
-                            self.reader.connect()
-                        else:
-                            self.reader = UDPReader(self.udp_port, self.data_received)
-                            self.reader.connect()
-                        await self.broadcast_config()
-                        
-                    elif data.get("command") == "set_port":
-                        new_port = data.get("port")
-                        print(f"[IOT] Switching COM port to {new_port}...")
-                        self.port = new_port
-                        if self.reader:
-                            self.reader.disconnect()
-                        if self.mode == "USB":
-                            self.reader = SerialReader(self.port, 460800, self.data_received)
-                            if self.reader.connect():
-                                print(f"[IOT] Successfully reconnected to {self.port}")
+                    elif data.get("command") == "connect_serial":
+                        port = data.get("port")
+                        if port and port not in self.readers:
+                            reader = SerialReader(port, 460800, self.data_received)
+                            if reader.connect():
+                                self.readers[port] = reader
+                                print(f"[IOT] Connected to {port}")
                             else:
-                                print(f"[IOT] Failed to connect to {self.port}")
-                                self.port = ""
+                                print(f"[IOT] Failed to connect to {port}")
                         await self.broadcast_config()
                         
-                    elif data.get("command") == "set_udp_port":
-                        new_port = int(data.get("port", 5000))
-                        print(f"[IOT] Switching UDP port to {new_port}...")
-                        self.udp_port = new_port
-                        if self.reader:
-                            self.reader.disconnect()
-                        if self.mode == "UDP":
-                            self.reader = UDPReader(self.udp_port, self.data_received)
-                            if self.reader.connect():
-                                print(f"[IOT] Successfully bound to UDP {self.udp_port}")
+                    elif data.get("command") == "disconnect_serial":
+                        port = data.get("port")
+                        if port in self.readers:
+                            self.readers[port].disconnect()
+                            del self.readers[port]
+                            print(f"[IOT] Disconnected from {port}")
+                        await self.broadcast_config()
+                        
+                    elif data.get("command") == "connect_udp":
+                        port = int(data.get("port", 5000))
+                        key = f"UDP_{port}"
+                        if key not in self.readers:
+                            reader = UDPReader(port, self.data_received)
+                            if reader.connect():
+                                self.readers[key] = reader
+                                print(f"[IOT] Listening on UDP {port}")
                             else:
-                                print(f"[IOT] Failed to bind to UDP {self.udp_port}")
+                                print(f"[IOT] Failed to bind to UDP {port}")
                         await self.broadcast_config()
                         
-                    elif data.get("command") == "disconnect":
-                        print("[IOT] Stopping CSI stream (Disconnecting)...")
-                        if self.reader:
-                            self.reader.disconnect()
-                        if self.mode == "USB":
-                            self.port = ""
-                        # For UDP, we don't clear the port, just stop listening.
-                        # But wait, if we stop the reader, the next connect will use it.
+                    elif data.get("command") == "disconnect_udp":
+                        port = int(data.get("port", 5000))
+                        key = f"UDP_{port}"
+                        if key in self.readers:
+                            self.readers[key].disconnect()
+                            del self.readers[key]
+                            print(f"[IOT] Stopped listening on UDP {port}")
                         await self.broadcast_config()
                         
                     elif data.get("command") == "get_config":
@@ -197,10 +171,11 @@ class HeadlessBrain:
                         new_tx_mode = data.get("tx_mode", "TX_DEDICATED")
                         self.tx_mode = new_tx_mode
                         print(f"[IOT] Switching TX Mode to {self.tx_mode}...")
-                        if self.reader and hasattr(self.reader, 'send_command'):
-                            cmd_str = "MODE_ROUTER" if self.tx_mode == "TX_ROUTER" else "MODE_TX_NODE"
-                            self.reader.send_command(cmd_str)
-                            print(f"[IOT] Transmitted {cmd_str} to ESP32 Receiver.")
+                        for r in self.readers.values():
+                            if hasattr(r, 'send_command'):
+                                cmd_str = "MODE_ROUTER" if self.tx_mode == "TX_ROUTER" else "MODE_TX_NODE"
+                                r.send_command(cmd_str)
+                        print(f"[IOT] Transmitted TX mode command to all relevant receivers.")
                         await self.broadcast_config()
                 except Exception as e:
                     print(f"[IOT] Error parsing command: {e}")
@@ -221,17 +196,15 @@ class HeadlessBrain:
             self.connected_clients -= dead
             
     async def broadcast_config(self):
-        # A helper to check if reader is actually running
-        is_running = self.reader is not None and getattr(self.reader, 'running', False)
+        active_serial_ports = [k for k in self.readers.keys() if not k.startswith("UDP")]
+        active_udp_ports = [int(k.split("_")[1]) for k in self.readers.keys() if k.startswith("UDP")]
         
         cfg_payload = {
             "type": "config",
-            "mode": self.mode,
             "tx_mode": self.tx_mode,
             "threshold": self.threshold,
-            "port": self.port if is_running and self.mode == "USB" else (self.port if self.mode == "USB" else ""),
-            "udp_port": self.udp_port,
-            "is_connected": is_running,
+            "active_serial_ports": active_serial_ports,
+            "active_udp_ports": active_udp_ports,
             "available_ports": [p.device for p in serial.tools.list_ports.comports()]
         }
         await self.broadcast_ws(cfg_payload)
@@ -301,23 +274,20 @@ class HeadlessBrain:
 
     # --- MAIN STARTUP ---
     def start(self):
-        print(f"[INFO] Initializing in {self.mode} mode...")
-        self.reader = SerialReader(self.port, 460800, self.data_received) if self.mode == "USB" else UDPReader(self.udp_port, self.data_received)
-        if self.reader.connect():
-            print(f"[SUCCESS] Reader Connected! Listening for CSI data...")
+        print(f"[INFO] Initializing Sentry IoT server...")
+        
+        # Start UDP listener by default so headless Wi-Fi operation works automatically
+        udp = UDPReader(self.udp_port, self.data_received)
+        if udp.connect():
+            self.readers[f"UDP_{self.udp_port}"] = udp
+            print(f"[SUCCESS] Default UDP Reader Connected on port {self.udp_port}")
             
-            # Start Unified Server in main thread (blocks forever)
-            try:
-                self.start_ws_server()
-            except KeyboardInterrupt:
-                print("\n[INFO] Shutting down...")
-                self.reader.disconnect()
-        else:
-            print("[ERROR] Initial connection failed. Starting server anyway so UI can reconfigure...")
-            try:
-                self.start_ws_server()
-            except KeyboardInterrupt:
-                pass
+        try:
+            self.start_ws_server()
+        except KeyboardInterrupt:
+            print("\n[INFO] Shutting down...")
+            for r in self.readers.values():
+                r.disconnect()
 
     # --- CSI DATA PROCESSING ---
     def data_received(self, amplitudes, rssi, location_name="Unknown"):

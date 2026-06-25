@@ -324,17 +324,9 @@
     <!-- Controls -->
     <div class="controls-container">
         <div class="glass control-card">
-            <label>Hardware Connection</label>
-            <div class="mode-toggle">
-                <div class="mode-btn active" id="mode-usb" onclick="setMode('USB')">USB Serial</div>
-                <div class="mode-btn" id="mode-udp" onclick="setMode('Wireless UDP')">Wireless UDP</div>
-            </div>
-            <div class="control-row">
-                <select id="port-select" style="flex:1;">
-                    <option value="">Scanning for devices...</option>
-                </select>
-                <input type="number" id="udp-port" value="5000" style="flex:1; display:none; max-width:120px;" placeholder="Port">
-                <button id="connect-btn" onclick="toggleConnect()">Connect</button>
+            <label>Hardware Connection (Multi-RX)</label>
+            <div id="connection-list" style="display:flex; flex-direction:column; gap:10px; margin-top: 10px;">
+                <!-- Filled dynamically by JS -->
             </div>
         </div>
         
@@ -554,45 +546,19 @@
             document.getElementById('threshold-display').innerText = parseFloat(this.value).toFixed(1);
         });
 
-        let currentMode = "USB";
-
-        function setMode(modeStr) {
-            // modeStr can be 'USB' or 'Wireless UDP'
-            const mode = modeStr === 'USB' ? 'USB' : 'UDP';
-            ws.send(JSON.stringify({command: "set_mode", mode: mode}));
-        }
-
-        let currentTxMode = "TX_DEDICATED";
-        
-        function setTxMode(modeStr) {
-            ws.send(JSON.stringify({command: "set_tx_mode", tx_mode: modeStr}));
-        }
-
-        function toggleConnect() {
-            const btn = document.getElementById('connect-btn');
-            if (btn.innerText === "Disconnect") {
-                ws.send(JSON.stringify({command: "disconnect"}));
-                btn.innerText = "Disconnecting...";
-                btn.disabled = true;
-                btn.style.opacity = "0.7";
+        function toggleSerial(port, isConnected) {
+            if (isConnected) {
+                ws.send(JSON.stringify({command: "disconnect_serial", port: port}));
             } else {
-                if (currentMode === "USB") {
-                    const port = document.getElementById('port-select').value;
-                    if (port) {
-                        ws.send(JSON.stringify({command: "set_port", port: port}));
-                        btn.innerText = "Connecting...";
-                        btn.disabled = true;
-                        btn.style.opacity = "0.7";
-                    }
-                } else {
-                    const port = document.getElementById('udp-port').value;
-                    if (port) {
-                        ws.send(JSON.stringify({command: "set_udp_port", port: port}));
-                        btn.innerText = "Connecting...";
-                        btn.disabled = true;
-                        btn.style.opacity = "0.7";
-                    }
-                }
+                ws.send(JSON.stringify({command: "connect_serial", port: port}));
+            }
+        }
+
+        function toggleUDP(port, isConnected) {
+            if (isConnected) {
+                ws.send(JSON.stringify({command: "disconnect_udp", port: parseInt(port)}));
+            } else {
+                ws.send(JSON.stringify({command: "connect_udp", port: parseInt(port)}));
             }
         }
 
@@ -631,20 +597,6 @@
                 document.getElementById('threshold-slider').value = data.threshold;
                 document.getElementById('threshold-display').innerText = parseFloat(data.threshold).toFixed(1);
                 
-                // Sync Mode UI
-                currentMode = data.mode || "USB";
-                if (currentMode === "USB") {
-                    document.getElementById('mode-usb').classList.add('active');
-                    document.getElementById('mode-udp').classList.remove('active');
-                    document.getElementById('port-select').style.display = 'block';
-                    document.getElementById('udp-port').style.display = 'none';
-                } else {
-                    document.getElementById('mode-usb').classList.remove('active');
-                    document.getElementById('mode-udp').classList.add('active');
-                    document.getElementById('port-select').style.display = 'none';
-                    document.getElementById('udp-port').style.display = 'block';
-                }
-                
                 // Sync TX Mode UI
                 currentTxMode = data.tx_mode || "TX_DEDICATED";
                 if (currentTxMode === "TX_DEDICATED") {
@@ -655,37 +607,51 @@
                     document.getElementById('tx-router').classList.add('active');
                 }
                 
-                if (data.udp_port) {
-                    document.getElementById('udp-port').value = data.udp_port;
-                }
+                // Build connection list
+                const connList = document.getElementById('connection-list');
+                connList.innerHTML = '';
                 
-                const portSelect = document.getElementById('port-select');
-                portSelect.innerHTML = '';
+                // UDP Row
+                const isUdpConnected = data.active_udp_ports && data.active_udp_ports.includes(5000);
+                const udpRow = document.createElement('div');
+                udpRow.className = 'control-row';
+                udpRow.style.marginTop = "0";
+                udpRow.style.marginBottom = "5px";
+                udpRow.innerHTML = `
+                    <div style="flex:1; display:flex; align-items:center;">
+                        <span style="font-weight:bold; color:var(--primary); margin-right:10px;">🌐 Wireless UDP</span> 
+                        <span style="color:var(--text-muted); font-size:12px;">(Port 5000)</span>
+                    </div>
+                    <button style="background: ${isUdpConnected ? 'linear-gradient(45deg, var(--danger), #ff4b2b)' : 'linear-gradient(45deg, var(--primary), var(--secondary))'}" 
+                            onclick="toggleUDP(5000, ${isUdpConnected})">
+                        ${isUdpConnected ? 'Disconnect' : 'Connect'}
+                    </button>
+                `;
+                connList.appendChild(udpRow);
+                
+                // Serial Rows
                 if (data.available_ports && data.available_ports.length > 0) {
                     data.available_ports.forEach(p => {
-                        const opt = document.createElement('option');
-                        opt.value = p;
-                        opt.innerText = p;
-                        if (p === data.port) opt.selected = true;
-                        portSelect.appendChild(opt);
+                        const isConnected = data.active_serial_ports && data.active_serial_ports.includes(p);
+                        const row = document.createElement('div');
+                        row.className = 'control-row';
+                        row.style.marginTop = "0";
+                        row.style.marginBottom = "5px";
+                        row.innerHTML = `
+                            <div style="flex:1; font-weight:bold;">🔌 ${p}</div>
+                            <button style="background: ${isConnected ? 'linear-gradient(45deg, var(--danger), #ff4b2b)' : 'linear-gradient(45deg, var(--primary), var(--secondary))'}" 
+                                    onclick="toggleSerial('${p}', ${isConnected})">
+                                ${isConnected ? 'Disconnect' : 'Connect'}
+                            </button>
+                        `;
+                        connList.appendChild(row);
                     });
                 } else {
-                    const opt = document.createElement('option');
-                    opt.value = "";
-                    opt.innerText = "No devices found";
-                    portSelect.appendChild(opt);
-                }
-                
-                const btn = document.getElementById('connect-btn');
-                btn.disabled = false;
-                btn.style.opacity = "1.0";
-                
-                if (data.is_connected) {
-                    btn.innerText = "Disconnect";
-                    btn.style.background = "linear-gradient(45deg, var(--danger), #ff4b2b)";
-                } else {
-                    btn.innerText = "Connect";
-                    btn.style.background = "linear-gradient(45deg, var(--primary), var(--secondary))";
+                    const row = document.createElement('div');
+                    row.style.color = "var(--text-muted)";
+                    row.style.fontSize = "13px";
+                    row.innerText = "No USB devices detected.";
+                    connList.appendChild(row);
                 }
                 
                 return;
