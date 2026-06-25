@@ -13,12 +13,6 @@ WiFiUDP udp;
 IPAddress target_ip;
 bool target_resolved = false;
 
-// 0 = TX_DEDICATED (Passive sniff ESP-NOW)
-// 1 = TX_ROUTER (Active UDP ping sniffing)
-int current_tx_mode = 0; 
-uint8_t router_mac[6]; // We will store the BSSID of the router here
-uint8_t tx_node_mac[6] = {0xD4, 0xE9, 0xF4, 0xA4, 0x40, 0xEC}; // Dedicated Node MAC
-
 // We use FreeRTOS queues just like in ESP-IDF to prevent crashing!
 QueueHandle_t csi_queue;
 
@@ -26,34 +20,46 @@ typedef struct {
     uint8_t mac[6];
     int8_t rssi;
     uint16_t len;
-    int8_t buf[128]; // Signed integers for proper UDP transmission
+    int8_t buf[128]; // Use signed integers so UDP transmits negative numbers correctly
     bool is_sos;
 } csi_packet_t;
 
-// The CSI Callback (Runs in the background Wi-Fi thread)
+// Mode Variables
+enum TxMode {
+    MODE_TX_NODE,
+    MODE_ROUTER
+};
+TxMode currentTxMode = MODE_TX_NODE;
+
+// The Dedicated TX Node MAC address (used in Phase 2)
+uint8_t dedicated_tx_mac[6] = {0xD4, 0xE9, 0xF4, 0xA4, 0x40, 0xEC};
+
+// The Router's MAC address will be populated automatically when connected
+uint8_t router_mac[6];
+
+// The CSI Callback (Runs in the background Wi-Fi thread on Core 0)
 void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info) {
     if (!info || !info->buf) return;
     
-    bool accept_packet = false;
+    bool is_our_tx = false;
     
-    if (current_tx_mode == 0) {
-        // TX_DEDICATED Mode: Match Dedicated TX Node MAC
-        if (memcmp(info->mac, tx_node_mac, 6) == 0) {
-            accept_packet = true;
-        }
-    } else {
-        // TX_ROUTER Mode: Match Home Router MAC
-        if (memcmp(info->mac, router_mac, 6) == 0) {
-            accept_packet = true;
-        }
+    if (currentTxMode == MODE_TX_NODE) {
+        // Filter for Dedicated TX Node
+        is_our_tx = (info->mac[0] == dedicated_tx_mac[0] && info->mac[1] == dedicated_tx_mac[1] && 
+                     info->mac[2] == dedicated_tx_mac[2] && info->mac[3] == dedicated_tx_mac[3] && 
+                     info->mac[4] == dedicated_tx_mac[4] && info->mac[5] == dedicated_tx_mac[5]);
+    } else if (currentTxMode == MODE_ROUTER) {
+        // Filter for Router (Gateway) MAC
+        is_our_tx = (info->mac[0] == router_mac[0] && info->mac[1] == router_mac[1] && 
+                     info->mac[2] == router_mac[2] && info->mac[3] == router_mac[3] && 
+                     info->mac[4] == router_mac[4] && info->mac[5] == router_mac[5]);
     }
 
-    if (accept_packet) {
+    if (is_our_tx) {
         csi_packet_t pkt;
         memset(&pkt, 0, sizeof(csi_packet_t));
         
-        if (info->rx_ctrl.sig_len > 100 && current_tx_mode == 0) {
-            // SOS button is only valid in Dedicated Node Mode (because it bloats the ESP-NOW packet)
+        if (info->rx_ctrl.sig_len > 100) {
             pkt.is_sos = true;
         } else {
             pkt.is_sos = false;
@@ -70,7 +76,7 @@ void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info) {
 
 void setup() {
     Serial.begin(460800);
-    pinMode(0, INPUT_PULLUP); // BOOT button for local SOS
+    pinMode(0, INPUT_PULLUP); // BOOT button for SOS
     
     csi_queue = xQueueCreate(20, sizeof(csi_packet_t));
     
@@ -82,15 +88,14 @@ void setup() {
         delay(500);
         Serial.print(".");
     }
-    Serial.println("\nWiFi Connected!");
-    Serial.print("IP Address: ");
+    Serial.println("\nWiFi Connected! IP Address: ");
     Serial.println(WiFi.localIP());
-    
-    // Grab the Router's MAC address dynamically!
+
+    // Automatically detect and store the Router's MAC Address!
     uint8_t* bssid = WiFi.BSSID();
     memcpy(router_mac, bssid, 6);
-    Serial.printf("Router MAC (BSSID): %02X:%02X:%02X:%02X:%02X:%02X\n", 
-                  router_mac[0], router_mac[1], router_mac[2], 
+    Serial.printf("Detected Router MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  router_mac[0], router_mac[1], router_mac[2],
                   router_mac[3], router_mac[4], router_mac[5]);
 
     // Initialize mDNS
@@ -106,17 +111,18 @@ void setup() {
         target_ip = MDNS.queryHost(dest_host);
     }
     target_resolved = true;
-    Serial.print("\nResolved Pi IP: ");
+    Serial.print("\nResolved IP: ");
     Serial.println(target_ip);
 
-    // Start UDP Server to listen for Dashboard Commands
-    udp.begin(dest_port);
+    // Start UDP Server to listen for commands from Pi
+    udp.begin(5000);
+    Serial.println("UDP Listener started on port 5000.");
 
     // Enable Promiscuous mode and CSI sniffing (Works alongside STA mode!)
     esp_wifi_set_promiscuous(true);
     wifi_promiscuous_filter_t rx_filter = { .filter_mask = WIFI_PROMIS_FILTER_MASK_ALL };
     esp_wifi_set_promiscuous_filter(&rx_filter);
-    // Note: We do NOT force channel 6 here anymore, because WiFi.begin() already tuned the radio to the router's channel!
+    // Note: We don't force channel here. It stays on the Router's channel.
     
     esp_wifi_set_csi(true);
     wifi_csi_config_t csi_config = {
@@ -127,43 +133,43 @@ void setup() {
     esp_wifi_set_csi_config(&csi_config);
     esp_wifi_set_csi_rx_cb(wifi_csi_rx_cb, NULL);
     
-    Serial.println("God Firmware Sniffing Started!");
+    Serial.println("CSI Sniffing Started!");
 }
 
 void loop() {
-    // 1. Check for incoming UDP Commands from Raspberry Pi
+    // 1. Process Incoming Commands from Pi (UDP)
     int packetSize = udp.parsePacket();
     if (packetSize) {
         char incomingPacket[255];
         int len = udp.read(incomingPacket, 255);
-        if (len > 0) incomingPacket[len] = 0;
-        
-        String cmd = String(incomingPacket);
-        cmd.trim();
-        
-        if (cmd == "MODE_ROUTER") {
-            current_tx_mode = 1;
-            Serial.println("Switched to TX_ROUTER mode.");
-        } else if (cmd == "MODE_TX_NODE") {
-            current_tx_mode = 0;
-            Serial.println("Switched to TX_DEDICATED mode.");
+        if (len > 0) {
+            incomingPacket[len] = 0;
+            String cmd = String(incomingPacket);
+            cmd.trim();
+            if (cmd == "MODE_ROUTER") {
+                currentTxMode = MODE_ROUTER;
+                Serial.println("Switched to Router TX Mode.");
+            } else if (cmd == "MODE_TX_NODE") {
+                currentTxMode = MODE_TX_NODE;
+                Serial.println("Switched to Dedicated TX Mode.");
+            }
         }
     }
-    
-    // 2. Check for incoming Serial Commands from Raspberry Pi
+
+    // 2. Process Incoming Commands from Pi (Serial USB)
     if (Serial.available()) {
         String cmd = Serial.readStringUntil('\n');
         cmd.trim();
         if (cmd == "MODE_ROUTER") {
-            current_tx_mode = 1;
-            Serial.println("Switched to TX_ROUTER mode.");
+            currentTxMode = MODE_ROUTER;
+            Serial.println("Switched to Router TX Mode.");
         } else if (cmd == "MODE_TX_NODE") {
-            current_tx_mode = 0;
-            Serial.println("Switched to TX_DEDICATED mode.");
+            currentTxMode = MODE_TX_NODE;
+            Serial.println("Switched to Dedicated TX Mode.");
         }
     }
 
-    // 3. Local SOS Button (Always works)
+    // 3. Check for SOS Button
     if (digitalRead(0) == LOW && target_resolved) {
         udp.beginPacket(target_ip, dest_port);
         udp.print("SOS_ALERT\n");
@@ -172,7 +178,7 @@ void loop() {
         delay(1000); // Debounce
     }
     
-    // 4. Batch CSI Data to Pi
+    // 4. Process CSI Queue and send UDP packets in batches
     int waiting = uxQueueMessagesWaiting(csi_queue);
     if (waiting >= 5 && target_resolved) {
         udp.beginPacket(target_ip, dest_port);

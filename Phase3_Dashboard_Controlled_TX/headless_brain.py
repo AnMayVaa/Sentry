@@ -44,10 +44,6 @@ class HeadlessBrain:
         self.prediction_history = []
         self.last_broadcast_time = 0
         
-        # Start Router Ping Thread
-        self.ping_thread = threading.Thread(target=self._router_ping_loop, daemon=True)
-        self.ping_thread.start()
-        
         self.ml_model = None
         try:
             self.ml_model = joblib.load("fall_detection_model.pkl")
@@ -65,6 +61,18 @@ class HeadlessBrain:
         # IoT Server Variables
         self.connected_clients = set()
         self.loop = None
+        
+        # Ping loop for TX_ROUTER mode
+        self.ping_thread = threading.Thread(target=self._router_ping_loop, daemon=True)
+        self.ping_thread.start()
+
+    def _router_ping_loop(self):
+        while True:
+            if self.tx_mode == "TX_ROUTER" and self.reader:
+                if hasattr(self.reader, 'send_command'):
+                    # Send a dummy ping packet at ~30Hz (33ms)
+                    self.reader.send_command("PING")
+            time.sleep(0.033)
 
     # --- WEBSOCKET SERVER LOGIC ---
     async def ws_handler(self, websocket):
