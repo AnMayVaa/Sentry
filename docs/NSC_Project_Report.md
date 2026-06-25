@@ -88,7 +88,8 @@ This document tracks the progress, methodologies, conflicts, and engineering sol
 *   **Conflict 3 (Browser Render Jank)**: The web dashboard lagged and stuttered because `Chart.js` tried to forcefully repaint the DOM on every single incoming WebSocket message (30Hz).
 *   **Solution 3**: We implemented a frame-buffering system in JavaScript. The incoming WebSocket data is decoupled from the UI thread, and we utilize the browser's native `requestAnimationFrame` API to batch chart updates smoothly into the hardware vsync cycle (60fps).
 *   **Conflict 4 (NumPy JSON Serialization Crash)**: The Python WebSocket server would sporadically crash and systemd would auto-restart it, causing the dashboard to continuously disconnect and reconnect. The `scikit-learn` Random Forest prediction returned a NumPy `int32` datatype, which standard Python `json.dumps()` could not serialize.
-*   **Solution 4**: We applied strict type casting (`int()` and `float()`) to all NumPy outputs in the `headless_brain.py` before building the WebSocket JSON payload. This permanently solved the crash and stabilized the 24/7 web server.
+*   **Conflict 5 (Chart.js Memory Leak)**: If the dashboard was left open for long periods, the web browser gradually consumed excessive RAM, causing intense Garbage Collection (GC) pauses and frontend lag.
+*   **Solution 5**: We isolated the leak to the 52-subcarrier graph updates. Chart.js was destroying and recreating 52 internal `_meta` DOM objects 15 times a second because we assigned a brand new array reference each frame. We refactored the JavaScript to mutate the existing array in-place (`rawData[i] = new_value`), allowing Chart.js to infinitely recycle its objects, achieving zero memory buildup.
 
 ---
 *Document will be updated as new phases are completed.*
