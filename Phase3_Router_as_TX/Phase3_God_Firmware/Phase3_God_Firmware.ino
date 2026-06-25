@@ -164,6 +164,15 @@ void loop() {
             Serial.println("Switched to Dedicated TX Mode.");
         }
     }
+    
+    // 2.5 Send Heartbeat to Pi so it learns our IP address!
+    static unsigned long last_heartbeat = 0;
+    if (millis() - last_heartbeat > 1000 && target_resolved) {
+        udp.beginPacket(target_ip, dest_port);
+        udp.print("HEARTBEAT\n");
+        udp.endPacket();
+        last_heartbeat = millis();
+    }
 
     // 3. Check for SOS Button
     // if (digitalRead(0) == LOW && target_resolved) {
