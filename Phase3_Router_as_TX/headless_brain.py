@@ -3,7 +3,8 @@ import os
 import time
 import json
 import numpy as np
-import pandas as pd
+from collections import deque
+
 import joblib
 from collections import Counter
 import threading
@@ -15,7 +16,7 @@ import socketserver
 import serial.tools.list_ports
 from serial_reader import SerialReader
 from udp_reader import UDPReader
-from ml_engine import extract_features
+from ml_engine import extract_features, extract_features_np
 from line_notifier import send_fall_alert
 
 # Load Config
@@ -40,9 +41,11 @@ class HeadlessBrain:
         self.tx_mode = "TX_DEDICATED" # 'TX_DEDICATED' or 'TX_ROUTER'
         self.threshold = threshold
         
-        self.history = []
-        self.prediction_history = []
+        self.history = deque(maxlen=45)
+        self.prediction_history = deque(maxlen=15)
         self.last_broadcast_time = 0
+        self.frame_count = 0
+        self._processing = False
         
         self.ml_model = None
         try:
@@ -279,60 +282,64 @@ class HeadlessBrain:
         
         # --- PHASE 4: SOS BUTTON INTERRUPT ---
         if isinstance(amplitudes, str) and amplitudes == "SOS":
-            print(f"[{time.strftime('%H:%M:%S')}] 🚨 SOS BUTTON PRESSED! 🚨")
+            print(f"[{time.strftime('%H:%M:%S')}] \U0001f6a8 SOS BUTTON PRESSED! \U0001f6a8")
             if current_time - self.last_line_alert_time > 60.0:
                 threading.Thread(target=send_fall_alert, daemon=True).start()
                 self.last_line_alert_time = current_time
             return
 
-        self.history.append(amplitudes)
-        if len(self.history) > 45: # 1.5 seconds at 30Hz
-            self.history.pop(0)
+        # Drop frame if previous one is still processing (prevents backlog)
+        if self._processing:
+            return
+        self._processing = True
+        
+        try:
+            self.history.append(amplitudes)
+            self.frame_count += 1
             
-            # Extract features
-            hist_arr = np.array(self.history)
-            df_window = pd.DataFrame(hist_arr)
-            features = extract_features(df_window)
+            current_variance = 0.0
             
-            # Predict
-            raw_pred = self.ml_model.predict([features])[0]
-            current_variance = features[0]
-            
-            # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
-            if current_variance < self.threshold:
-                raw_pred = 0 # STRICT GATEKEEPER: Force STATIC if variance is too low
-            elif current_variance >= self.threshold and raw_pred == 0:
-                raw_pred = 1 # Force MOVEMENT if variance spikes
-                
-            # Debounce Logic
-            self.prediction_history.append(raw_pred)
-            if len(self.prediction_history) > 15:
-                self.prediction_history.pop(0)
-                
-            mode_pred = Counter(self.prediction_history).most_common(1)[0][0]
-            
-            # Sequence State Machine
-            if mode_pred == 2:
-                self.potential_fall_time = current_time
-                
-            if (current_time - self.potential_fall_time < 3.0) and mode_pred == 0:
-                if current_time - self.last_line_alert_time > 60.0:
-                    print(f"\n[{time.strftime('%H:%M:%S')}] 🚨 FALL DETECTED! CONFIRMED STATIC POSTURE! 🚨")
-                    threading.Thread(target=send_fall_alert, daemon=True).start()
-                    self.last_line_alert_time = current_time
-            
-            new_state = 1 if mode_pred == 2 else mode_pred 
-            if current_time - self.last_line_alert_time < 3.0:
-                new_state = 2 
-                
-            if new_state != self.current_state:
-                state_names = {0: "🟢 STATIC", 1: "🟠 MOVEMENT", 2: "🔴 FALL DETECTED"}
-                print(f"[{time.strftime('%H:%M:%S')}] STATE CHANGE: {state_names[new_state]} (Var: {current_variance:.2f})")
-                self.current_state = new_state
+            if len(self.history) >= 45:
+                # Run ML inference every 2nd frame (15Hz) — plenty for fall detection
+                if self.frame_count % 2 == 0:
+                    # Direct numpy — no pandas DataFrame overhead!
+                    hist_arr = np.array(self.history)
+                    features = extract_features_np(hist_arr)
+                    
+                    raw_pred = self.ml_model.predict([features])[0]
+                    current_variance = features[0]
+                    
+                    # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
+                    if current_variance < self.threshold:
+                        raw_pred = 0
+                    elif current_variance >= self.threshold and raw_pred == 0:
+                        raw_pred = 1
+                        
+                    self.prediction_history.append(raw_pred)
+                    mode_pred = Counter(self.prediction_history).most_common(1)[0][0]
+                    
+                    # Sequence State Machine
+                    if mode_pred == 2:
+                        self.potential_fall_time = current_time
+                        
+                    if (current_time - self.potential_fall_time < 3.0) and mode_pred == 0:
+                        if current_time - self.last_line_alert_time > 60.0:
+                            print(f"\n[{time.strftime('%H:%M:%S')}] \U0001f6a8 FALL DETECTED! \U0001f6a8")
+                            threading.Thread(target=send_fall_alert, daemon=True).start()
+                            self.last_line_alert_time = current_time
+                    
+                    new_state = 1 if mode_pred == 2 else mode_pred 
+                    if current_time - self.last_line_alert_time < 3.0:
+                        new_state = 2 
+                        
+                    if new_state != self.current_state:
+                        state_names = {0: "STATIC", 1: "MOVEMENT", 2: "FALL DETECTED"}
+                        print(f"[{time.strftime('%H:%M:%S')}] STATE: {state_names[new_state]} (Var: {current_variance:.2f})")
+                        self.current_state = new_state
 
-            # --- IOT BROADCAST (30 FPS to match CSI rate) ---
+            # --- IOT BROADCAST (30 FPS) ---
             if self.loop and self.loop.is_running():
-                if current_time - self.last_broadcast_time > 0.033: # 30 FPS
+                if current_time - self.last_broadcast_time > 0.033:
                     payload = {
                         "state": self.current_state,
                         "variance": round(current_variance, 2),
@@ -341,6 +348,8 @@ class HeadlessBrain:
                     }
                     asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
                     self.last_broadcast_time = current_time
+        finally:
+            self._processing = False
 
 if __name__ == "__main__":
     print("=======================================")

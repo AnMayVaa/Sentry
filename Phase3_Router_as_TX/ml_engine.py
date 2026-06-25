@@ -41,6 +41,27 @@ def extract_features(window_df):
     ]
     return np.array(features)
 
+def extract_features_np(data):
+    """
+    Same as extract_features but takes a numpy array directly (no pandas).
+    This avoids DataFrame creation overhead in the real-time hot path.
+    Input: numpy array of shape (WINDOW_SIZE, 52)
+    Output: 1D numpy array of features.
+    """
+    std_devs = np.std(data, axis=0)
+    ptp = np.ptp(data, axis=0)
+    diffs = np.diff(data, axis=0)
+    mad = np.mean(np.abs(diffs), axis=0)
+    
+    return np.array([
+        np.mean(std_devs),
+        np.max(std_devs),
+        np.mean(ptp),
+        np.max(ptp),
+        np.mean(mad),
+        np.max(mad)
+    ])
+
 def create_dataset(file_path, label, is_fall=False):
     """
     Reads a CSV and extracts features using a sliding window.
