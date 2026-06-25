@@ -48,7 +48,20 @@ class NodeState:
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
         self.readers = {} # port_name -> Reader instance
+        self.udp_port = 5000
+        self.tx_mode = "TX_DEDICATED" # 'TX_DEDICATED' or 'TX_ROUTER'
+        self.threshold = threshold
         
+        self.nodes = {} # Dictionary mapping location_name -> NodeState
+        
+        self.ml_model = None
+        try:
+            self.ml_model = joblib.load("fall_detection_model.pkl")
+            print("[INFO] Loaded Fall Detection ML model successfully!")
+        except Exception as e:
+            print(f"[WARNING] Could not load ML model: {e}")
+            sys.exit(1)
+
         # IoT Server Variables
         self.connected_clients = set()
         self.loop = None
