@@ -65,6 +65,7 @@ class HeadlessBrain:
         # IoT Server Variables
         self.connected_clients = set()
         self.loop = None
+        self._latest_payload = None  # Shared between reader thread and async loop
         
         # Ping loop for TX_ROUTER mode — always uses Wi-Fi UDP, never serial!
         self.esp32_ip = None
@@ -207,7 +208,14 @@ class HeadlessBrain:
     async def broadcast_ws(self, payload):
         if self.connected_clients:
             message = json.dumps(payload)
-            websockets.broadcast(self.connected_clients, message)
+            # Use try/except to handle any disconnected clients
+            dead = set()
+            for ws in self.connected_clients:
+                try:
+                    await ws.send(message)
+                except Exception:
+                    dead.add(ws)
+            self.connected_clients -= dead
             
     async def broadcast_config(self):
         # A helper to check if reader is actually running
@@ -242,11 +250,21 @@ class HeadlessBrain:
         else:
             return (http.HTTPStatus.NOT_FOUND, [], b"Not Found")
 
+    async def _broadcast_loop(self):
+        """Fixed-rate broadcast loop. Runs independently at 15Hz.
+        Always sends only the LATEST state - never queues up."""
+        while True:
+            if self._latest_payload and self.connected_clients:
+                payload = self._latest_payload
+                self._latest_payload = None
+                await self.broadcast_ws(payload)
+            await asyncio.sleep(0.066)  # 15 FPS - perfect for web dashboard over Cloudflare
+
     async def _ws_main(self):
         import http
-        # Bind BOTH HTTP and WebSocket to port 8000 to easily proxy through a single Cloudflare Tunnel
         async with websockets.serve(self.ws_handler, "0.0.0.0", 8000, process_request=self.process_request):
-            await asyncio.Future()
+            # Run broadcast loop alongside the WebSocket server
+            await self._broadcast_loop()
 
     def start_ws_server(self):
         self.loop = asyncio.new_event_loop()
@@ -339,17 +357,13 @@ class HeadlessBrain:
                         print(f"[{time.strftime('%H:%M:%S')}] STATE: {state_names[new_state]} (Var: {current_variance:.2f})")
                         self.current_state = new_state
 
-            # --- IOT BROADCAST (30 FPS) ---
-            if self.loop and self.loop.is_running():
-                if current_time - self.last_broadcast_time > 0.033:
-                    payload = {
-                        "state": self.current_state,
-                        "variance": round(current_variance, 2),
-                        "threshold": self.threshold,
-                        "amplitudes": [round(a, 1) for a in amplitudes]
-                    }
-                    asyncio.run_coroutine_threadsafe(self.broadcast_ws(payload), self.loop)
-                    self.last_broadcast_time = current_time
+            # --- Store latest payload for the broadcast loop ---
+            self._latest_payload = {
+                "state": self.current_state,
+                "variance": round(current_variance, 2),
+                "threshold": self.threshold,
+                "amplitudes": [round(a, 1) for a in amplitudes]
+            }
         finally:
             self._processing = False
 
