@@ -194,7 +194,8 @@ class HeadlessBrain:
 
     # --- UNIFIED HTTP & WEBSOCKET SERVER LOGIC ---
     async def process_request(self, connection, request):
-        from websockets.http11 import Response, Headers
+        from websockets.http11 import Response
+        from websockets.datastructures import Headers
         import http
         if request.path == "/" or request.path == "/index.html":
             dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
