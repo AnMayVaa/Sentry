@@ -580,7 +580,10 @@
             varianceChart.update('none');
 
             // Raw Chart
-            rawChart.data.datasets[0].data = data.amplitudes;
+            let rawData = rawChart.data.datasets[0].data;
+            for(let i = 0; i < data.amplitudes.length; i++) {
+                rawData[i] = data.amplitudes[i];
+            }
             rawChart.update('none');
         }
 
