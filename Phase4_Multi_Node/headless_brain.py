@@ -111,20 +111,13 @@ class HeadlessBrain:
         ping_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         while True:
             if self.tx_mode == "TX_ROUTER":
-                # Always send UDP over Wi-Fi to stimulate the router
-                if self.esp32_ip:
-                    try:
-                        ping_sock.sendto(b"PING", (self.esp32_ip, 5000))
-                    except Exception:
-                        pass
-                # Also use the reader's send_command if it's UDP-based
-                elif f"UDP_{self.udp_port}" in self.readers:
-                    reader = self.readers[f"UDP_{self.udp_port}"]
-                    if hasattr(reader, 'last_client_addr') and reader.last_client_addr:
-                        try:
-                            reader.send_command("PING")
-                        except Exception:
-                            pass
+                # Always send UDP over Wi-Fi to stimulate the router.
+                # We broadcast this to the subnet instead of hitting the ESP32 directly to avoid overwhelming its command buffer.
+                try:
+                    ping_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    ping_sock.sendto(b"ROUTER_STIMULUS", ('255.255.255.255', 5001))
+                except Exception:
+                    pass
             time.sleep(0.033)
 
     # --- WEBSOCKET SERVER LOGIC ---

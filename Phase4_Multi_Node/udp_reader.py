@@ -35,7 +35,7 @@ class UDPReader:
             self.sock.close()
             
     def send_command(self, cmd_string):
-        if self.sock and self.client_addrs:
+        if self.sock:
             success = False
             for addr in self.client_addrs:
                 try:
@@ -43,6 +43,15 @@ class UDPReader:
                     success = True
                 except Exception as e:
                     print(f"Failed to send to {addr}: {e}")
+                    
+            # Also attempt global broadcast to catch newly booted ESP32s that haven't sent data yet
+            try:
+                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                self.sock.sendto((cmd_string + '\n').encode('utf-8'), ('255.255.255.255', self.port))
+                success = True
+            except Exception:
+                pass
+                
             return success
         return False
             
