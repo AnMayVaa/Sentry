@@ -45,6 +45,7 @@ class NodeState:
         self.current_state = 0 # 0=STATIC, 1=MOVEMENT, 2=FALL
         self.last_variance = 0.0
         self.last_seen = time.time()
+        self.threshold = THRESHOLD
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -75,6 +76,21 @@ class HeadlessBrain:
         
         # Background thread to discover ESP32's IP via mDNS
         self._discover_esp32_ip()
+        
+        # Background thread to poll COM ports
+        self._poll_com_ports()
+
+    def _poll_com_ports(self):
+        def _poll():
+            last_ports = []
+            while True:
+                current_ports = [p.device for p in serial.tools.list_ports.comports()]
+                if current_ports != last_ports:
+                    last_ports = current_ports
+                    if self.loop and self.loop.is_running():
+                        asyncio.run_coroutine_threadsafe(self.broadcast_config(), self.loop)
+                time.sleep(2)
+        threading.Thread(target=_poll, daemon=True).start()
 
     def _discover_esp32_ip(self):
         """Try to resolve esp32-csi.local via mDNS so we can UDP-ping it."""
@@ -124,9 +140,17 @@ class HeadlessBrain:
                 try:
                     data = json.loads(message)
                     if data.get("command") == "set_threshold":
-                        self.threshold = float(data.get("value", 2.0))
-                        print(f"[IOT] Threshold updated to {self.threshold}")
-                        await self.broadcast_config()
+                        new_thresh = float(data.get("value", 2.0))
+                        node_id = data.get("node_id")
+                        if node_id and node_id in self.nodes:
+                            self.nodes[node_id].threshold = new_thresh
+                            print(f"[IOT] Threshold for {node_id} updated to {new_thresh}")
+                        else:
+                            self.threshold = new_thresh
+                            for node in self.nodes.values():
+                                node.threshold = new_thresh
+                            print(f"[IOT] Global threshold updated to {self.threshold}")
+                        # No need to broadcast config, threshold is sent in data payload
                         
                     elif data.get("command") == "connect_serial":
                         port = data.get("port")
@@ -258,7 +282,7 @@ class HeadlessBrain:
                     payload["nodes"][loc] = {
                         "state": int(node.current_state),
                         "variance": round(float(node.last_variance), 2),
-                        "threshold": float(self.threshold),
+                        "threshold": float(node.threshold),
                         "amplitudes": [round(float(a), 1) for a in amps]
                     }
                 await self.broadcast_ws(payload)
@@ -344,9 +368,9 @@ class HeadlessBrain:
                         node.last_variance = current_variance
                         
                         # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
-                        if current_variance < self.threshold:
+                        if current_variance < node.threshold:
                             raw_pred = 0
-                        elif current_variance >= self.threshold and raw_pred == 0:
+                        elif current_variance >= node.threshold and raw_pred == 0:
                             raw_pred = 1
                             
                         node.prediction_history.append(raw_pred)

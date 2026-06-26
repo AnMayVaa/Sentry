@@ -8,6 +8,7 @@ class UDPReader:
         self.port = port
         self.sock = None
         self.running = False
+        self.client_addrs = set()
         self.thread = None
         self.data_callback = data_callback
         self.last_client_addr = None
@@ -34,19 +35,22 @@ class UDPReader:
             self.sock.close()
             
     def send_command(self, cmd_string):
-        if self.sock and self.last_client_addr:
-            try:
-                self.sock.sendto((cmd_string + '\n').encode('utf-8'), self.last_client_addr)
-                return True
-            except Exception as e:
-                print(f"Failed to send UDP command: {e}")
+        if self.sock and self.client_addrs:
+            success = False
+            for addr in self.client_addrs:
+                try:
+                    self.sock.sendto((cmd_string + '\n').encode('utf-8'), addr)
+                    success = True
+                except Exception as e:
+                    print(f"Failed to send to {addr}: {e}")
+            return success
         return False
             
     def _read_loop(self):
         while self.running and self.sock:
             try:
                 data, addr = self.sock.recvfrom(4096)
-                self.last_client_addr = addr
+                self.client_addrs.add(addr)
                 decoded_data = data.decode('utf-8', errors='ignore').strip()
                 
                 # A single UDP packet might contain a batch of multiple CSI frames separated by newline

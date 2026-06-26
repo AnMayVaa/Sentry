@@ -341,15 +341,7 @@
             </div>
         </div>
         
-        <div class="glass control-card">
-            <label>Sensitivity Threshold (Variance Trigger)</label>
-            <div class="control-row">
-                <input type="range" id="threshold-slider" min="0.1" max="10.0" step="0.1" value="2.0" onchange="changeThreshold()">
-                <div style="background: rgba(0,0,0,0.2); padding: 8px 15px; border-radius: 8px; font-weight: bold; width: 45px; text-align: center;">
-                    <span id="threshold-display">2.0</span>
-                </div>
-            </div>
-        </div>
+        <!-- Removed global threshold card, now injected per NodeCard -->
 
         <div class="glass control-card" style="flex: 1.5;">
             <label>Quick Guide</label>
@@ -396,6 +388,15 @@
                         <div class="glass metric-panel" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 20px;">
                             <div class="metric-label" style="font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Temporal Variance</div>
                             <div class="metric-value" id="variance-val-${this.idSafeName}" style="font-size: 48px; font-weight: 800; color: var(--primary); text-shadow: 0 0 20px rgba(0, 210, 255, 0.4);">0.00</div>
+                            <div style="width: 80%; margin-top: 15px;">
+                                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-bottom:5px;">
+                                    <span>Sensitivity Threshold</span>
+                                    <span id="thresh-val-${this.idSafeName}" style="font-weight:bold; color:white;">2.0</span>
+                                </div>
+                                <input type="range" id="thresh-slider-${this.idSafeName}" min="0.1" max="10.0" step="0.1" value="2.0" 
+                                       onchange="setNodeThreshold('${this.locationName}', this.value)"
+                                       oninput="document.getElementById('thresh-val-${this.idSafeName}').innerText = parseFloat(this.value).toFixed(1)">
+                            </div>
                         </div>
                     </div>
                     <div class="charts-container" style="display: flex; flex-wrap: wrap; gap: 25px;">
@@ -499,6 +500,13 @@
                 }
 
                 document.getElementById(`variance-val-${this.idSafeName}`).innerText = data.variance.toFixed(2);
+                
+                // Don't overwrite the slider if the user is actively dragging it
+                const slider = document.getElementById(`thresh-slider-${this.idSafeName}`);
+                if (document.activeElement !== slider) {
+                    slider.value = data.threshold;
+                    document.getElementById(`thresh-val-${this.idSafeName}`).innerText = data.threshold.toFixed(1);
+                }
 
                 let varData = this.varianceChart.data.datasets[0].data;
                 varData.shift();
@@ -548,15 +556,10 @@
         };
 
         // GUI Controls
-        function changeThreshold() {
-            const val = document.getElementById('threshold-slider').value;
-            document.getElementById('threshold-display').innerText = parseFloat(val).toFixed(1);
-            ws.send(JSON.stringify({command: "set_threshold", value: val}));
+        function setNodeThreshold(nodeId, val) {
+            document.getElementById('thresh-val-' + nodeId.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')).innerText = parseFloat(val).toFixed(1);
+            ws.send(JSON.stringify({command: "set_threshold", node_id: nodeId, value: val}));
         }
-
-        document.getElementById('threshold-slider').addEventListener('input', function() {
-            document.getElementById('threshold-display').innerText = parseFloat(this.value).toFixed(1);
-        });
 
         let currentTxMode = "TX_DEDICATED";
         
@@ -612,8 +615,7 @@
             
             // Handle Config
             if (data.type === "config") {
-                document.getElementById('threshold-slider').value = data.threshold;
-                document.getElementById('threshold-display').innerText = parseFloat(data.threshold).toFixed(1);
+                // Global threshold is handled per-node now.
                 
                 // Sync TX Mode UI
                 currentTxMode = data.tx_mode || "TX_DEDICATED";
