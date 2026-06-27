@@ -1,683 +1,990 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th" data-theme="dark" data-lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentry IoT Dashboard</title>
-    <!-- Modern Typography -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <title>Sentry IoT Dashboard — ระบบตรวจจับการล้ม</title>
+    <meta name="description" content="Sentry คือระบบตรวจจับการล้มแบบ Real-time ผ่านคลื่น Wi-Fi CSI สำหรับผู้สูงอายุ">
+    <!-- Thai + Latin Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700;800&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* ─── DESIGN TOKENS ─────────────────────────────────────────── */
         :root {
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --primary: #00d2ff;
-            --secondary: #3a7bd5;
-            --success: #00f260;
-            --danger: #ff416c;
-            --warning: #fbc531;
-            --text-main: #ffffff;
-            --text-muted: rgba(255, 255, 255, 0.6);
+            --primary:       #00d2ff;
+            --secondary:     #3a7bd5;
+            --success:       #00f260;
+            --danger:        #ff416c;
+            --warning:       #f5a623;
+            --accent:        #a78bfa;
+
+            /* Dark mode defaults */
+            --bg-body:       linear-gradient(135deg, #0d1117, #161b22, #1a2332);
+            --bg-glass:      rgba(255,255,255,0.04);
+            --bg-glass-hover:rgba(255,255,255,0.08);
+            --border-glass:  rgba(255,255,255,0.09);
+            --text-main:     #e6edf3;
+            --text-muted:    rgba(230,237,243,0.55);
+            --text-label:    rgba(230,237,243,0.4);
+            --toggle-bg:     rgba(0,0,0,0.35);
+            --shadow-card:   0 8px 32px rgba(0,0,0,0.45);
+            --shadow-btn:    0 4px 15px rgba(0,210,255,0.3);
         }
 
-        * { box-sizing: border-box; }
-        
+        [data-theme="light"] {
+            --bg-body:       linear-gradient(135deg, #e8f4f8, #ddeeff, #eef2ff);
+            --bg-glass:      rgba(255,255,255,0.72);
+            --bg-glass-hover:rgba(255,255,255,0.9);
+            --border-glass:  rgba(58,123,213,0.15);
+            --text-main:     #1a2332;
+            --text-muted:    rgba(26,35,50,0.6);
+            --text-label:    rgba(26,35,50,0.45);
+            --toggle-bg:     rgba(58,123,213,0.12);
+            --shadow-card:   0 4px 20px rgba(58,123,213,0.15);
+            --shadow-btn:    0 4px 15px rgba(0,130,200,0.25);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            font-family: 'Sarabun', 'Inter', sans-serif;
+            background: var(--bg-body);
             color: var(--text-main);
-            margin: 0;
-            padding: 2vh 3vw;
             min-height: 100vh;
-            overflow-x: auto; /* allow horizontal slide */
-            overflow-y: auto;
+            padding: 18px 24px;
             display: flex;
             flex-direction: column;
-            gap: 2vh;
+            gap: 18px;
+            overflow-x: auto;
+            overflow-y: auto;
+            transition: background 0.4s, color 0.3s;
         }
 
-        /* Glassmorphism Classes */
+        /* ─── GLASS CARD ─────────────────────────────────────────────── */
         .glass {
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
+            background: var(--bg-glass);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid var(--border-glass);
             border-radius: 16px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            box-shadow: var(--shadow-card);
+            transition: background 0.3s, border 0.3s, box-shadow 0.3s;
+        }
+        .glass:hover {
+            background: var(--bg-glass-hover);
         }
 
-        /* Header */
+        /* ─── HEADER ─────────────────────────────────────────────────── */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 20px 30px;
+            padding: 16px 26px;
+            flex-wrap: wrap;
+            gap: 12px;
         }
+        .header-left { display: flex; flex-direction: column; gap: 2px; }
         .header h1 {
-            margin: 0;
             font-weight: 800;
-            letter-spacing: -1px;
-            background: -webkit-linear-gradient(45deg, var(--primary), var(--secondary));
+            font-size: 26px;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        .conn-status {
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .pulse-dot {
-            height: 12px;
-            width: 12px;
-            border-radius: 50%;
-            display: inline-block;
+        .header-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 400;
+            letter-spacing: 0.3px;
         }
 
-        /* Controls */
-        .controls-container {
+        .header-right {
             display: flex;
-            gap: 20px;
+            align-items: center;
+            gap: 14px;
             flex-wrap: wrap;
         }
+
+        /* ─── PILL TOGGLE (used for Dark/Light, TH/EN, TX Mode) ─── */
+        .pill-toggle {
+            display: flex;
+            background: var(--toggle-bg);
+            border-radius: 24px;
+            padding: 4px;
+            gap: 2px;
+            border: 1px solid var(--border-glass);
+        }
+        .pill-btn {
+            padding: 5px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            transition: all 0.25s;
+            user-select: none;
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+        }
+        .pill-btn.active {
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            color: #fff;
+            box-shadow: 0 2px 10px rgba(0,210,255,0.35);
+        }
+        [data-theme="light"] .pill-btn.active {
+            box-shadow: 0 2px 10px rgba(0,130,200,0.3);
+        }
+
+        /* ─── CONNECTION STATUS ──────────────────────────────────────── */
+        .conn-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .pulse-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--warning);
+            flex-shrink: 0;
+        }
+        .pulse-dot.connected { animation: blink 2s infinite; }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.4; }
+        }
+
+        /* ─── CONTROL PANEL (one unified row) ──────────────────────── */
+        .controls-container {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr 1.6fr;
+            gap: 16px;
+        }
         .control-card {
-            flex: 1 1 200px;
-            padding: 20px 25px;
+            padding: 18px 22px;
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
-        .control-card label {
+        .control-card-label {
             text-transform: uppercase;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            color: var(--text-label);
+            margin-bottom: 2px;
         }
-        .control-row {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-        }
-        
-        select, input[type="range"] {
-            background: rgba(0,0,0,0.2);
-            color: white;
-            border: 1px solid var(--glass-border);
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-family: 'Inter', sans-serif;
-            font-weight: 600;
-            outline: none;
-        }
-        
+
+        /* ─── BUTTONS ─────────────────────────────────────────────────── */
         button {
             background: linear-gradient(45deg, var(--primary), var(--secondary));
             color: white;
             border: none;
-            padding: 10px 25px;
+            padding: 8px 20px;
             border-radius: 8px;
-            font-weight: 600;
+            font-weight: 700;
+            font-family: inherit;
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+            transition: all 0.25s;
+            box-shadow: var(--shadow-btn);
+            font-size: 13px;
+            white-space: nowrap;
         }
         button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 210, 255, 0.5);
+            box-shadow: 0 6px 22px rgba(0,210,255,0.45);
+        }
+        button.btn-danger {
+            background: linear-gradient(45deg, var(--danger), #ff4b2b);
+            box-shadow: 0 4px 15px rgba(255,65,108,0.3);
+        }
+        button.btn-danger:hover {
+            box-shadow: 0 6px 22px rgba(255,65,108,0.5);
+        }
+        button.btn-sim {
+            background: linear-gradient(45deg, #a78bfa, #6d28d9);
+            box-shadow: 0 4px 15px rgba(167,139,250,0.3);
+            font-size: 12px;
+            padding: 7px 14px;
         }
 
-        /* Status Panels */
-        .status-container {
+        /* ─── CONNECTION LIST ──────────────────────────────────────── */
+        .conn-row {
             display: flex;
-            gap: 25px;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border-glass);
         }
-        
-        .state-panel {
-            flex: 2;
+        .conn-row:last-child { border-bottom: none; }
+        .conn-row-info { flex: 1; }
+        .conn-row-title {
+            font-weight: 700;
+            font-size: 13px;
+            color: var(--primary);
+        }
+        .conn-row-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 1px;
+        }
+
+        /* ─── QUICK GUIDE ──────────────────────────────────────────── */
+        .guide-list {
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            gap: 7px;
+        }
+        .guide-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+        .guide-num {
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            color: #fff;
+            border-radius: 50%;
+            width: 18px; height: 18px;
+            font-size: 10px;
+            font-weight: 800;
+            display: flex;
             align-items: center;
-            padding: 40px;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        /* ─── NODE CARD ────────────────────────────────────────────── */
+        .node-card {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            animation: fadeIn 0.4s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .node-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .node-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--primary);
+            letter-spacing: 0.5px;
+        }
+        .node-id-tag {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-left: 8px;
+        }
+        .node-sim-btns {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .sim-tooltip-wrap {
+            position: relative;
+        }
+        .sim-tooltip {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            right: 0;
+            background: #1a2332;
+            color: #e6edf3;
+            font-size: 11px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            width: 210px;
+            line-height: 1.5;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            border: 1px solid var(--border-glass);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+        }
+        .sim-tooltip-wrap:hover .sim-tooltip { opacity: 1; }
+        [data-theme="light"] .sim-tooltip { background: #fff; color: #1a2332; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+
+        /* ─── STATUS ROW (state + variance + stats) ─────────────────── */
+        .status-row {
+            display: grid;
+            grid-template-columns: 2fr 1.2fr 1fr;
+            gap: 16px;
+        }
+        .state-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 28px 20px;
+            transition: all 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
             position: relative;
             overflow: hidden;
+            gap: 6px;
         }
-        
-        #state-box {
-            font-size: 56px;
+        .state-text {
+            font-size: 44px;
             font-weight: 800;
             letter-spacing: 2px;
-            text-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            z-index: 2;
+            text-align: center;
+        }
+        .state-sub {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            opacity: 0.8;
             z-index: 2;
         }
 
-        /* Fall Detected Glowing Animation */
         @keyframes pulse-danger {
-            0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.7); }
-            70% { box-shadow: 0 0 0 40px rgba(255, 65, 108, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0); }
+            0%   { box-shadow: 0 0 0 0   rgba(255,65,108,0.7); }
+            70%  { box-shadow: 0 0 0 30px rgba(255,65,108,0);   }
+            100% { box-shadow: 0 0 0 0   rgba(255,65,108,0);    }
         }
-        .state-fall {
-            background: linear-gradient(135deg, #ff416c, #ff4b2b) !important;
-            animation: pulse-danger 1.5s infinite;
-        }
-        .state-movement {
-            background: linear-gradient(135deg, #f2994a, #f2c94c) !important;
-        }
-        .state-static {
-            background: linear-gradient(135deg, #11998e, #38ef7d) !important;
-        }
+        .state-fall     { background: linear-gradient(135deg,#ff416c,#ff4b2b) !important; animation: pulse-danger 1.5s infinite; }
+        .state-movement { background: linear-gradient(135deg,#f59e0b,#f97316) !important; }
+        .state-static   { background: linear-gradient(135deg,#059669,#34d399) !important; }
 
-        .metric-panel {
-            flex: 1;
+        .variance-panel {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            gap: 12px;
         }
-        .metric-value {
-            font-size: 48px;
+        .variance-big {
+            font-size: 44px;
             font-weight: 800;
             color: var(--primary);
-            text-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+            text-shadow: 0 0 20px rgba(0,210,255,0.35);
         }
-        .metric-label {
-            font-size: 14px;
-            font-weight: 600;
+        .variance-lbl {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 1px;
         }
-
-        /* Charts */
-        .charts-container {
+        .threshold-row {
+            width: 100%;
+        }
+        .threshold-header {
             display: flex;
-            flex-wrap: wrap;
-            gap: 25px;
-            flex: 1;
-            min-height: 0;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
         }
-        .chart-wrapper {
-            flex: 1 1 400px; /* Flex-grow, shrink, and min-width */
-            min-width: 300px;
-            padding: 20px;
-            position: relative;
-            overflow-x: auto; /* Enable sliding for the graph */
-        }
-
-        /* Custom Range Slider */
         input[type=range] {
             -webkit-appearance: none;
             width: 100%;
             background: transparent;
         }
+        input[type=range]::-webkit-slider-runnable-track {
+            height: 6px;
+            background: rgba(255,255,255,0.12);
+            border-radius: 3px;
+        }
+        [data-theme="light"] input[type=range]::-webkit-slider-runnable-track {
+            background: rgba(58,123,213,0.2);
+        }
         input[type=range]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            height: 20px;
-            width: 20px;
+            width: 18px; height: 18px;
             border-radius: 50%;
             background: var(--primary);
-            cursor: pointer;
             margin-top: -6px;
-            box-shadow: 0 0 10px var(--primary);
-        }
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 8px;
             cursor: pointer;
-            background: rgba(255,255,255,0.1);
-            border-radius: 4px;
+            box-shadow: 0 0 8px var(--primary);
         }
 
-        /* Responsive Layout for iPad & Mobile */
-        @media (max-width: 1024px) {
-            body {
-                height: auto;
-                overflow-y: auto;
-                padding: 15px 15px;
-                gap: 15px;
-            }
-            .header {
-                padding: 15px 20px;
-            }
-            .header h1 {
-                font-size: 24px;
-            }
-            .control-card {
-                padding: 15px;
-            }
-            .state-panel {
-                min-height: 150px;
-                padding: 20px;
-            }
-            #state-box {
-                font-size: 42px;
-            }
-            .metric-value {
-                font-size: 36px;
-            }
-            .chart-wrapper {
-                min-height: 250px;
-                padding: 15px;
-            }
-            .status-container {
-                gap: 15px;
-                flex-direction: column;
-            }
-            .charts-container {
-                gap: 15px;
-            }
-        }
-        
-        /* Mobile specific layout */
-        @media (max-width: 600px) {
-            .controls-container {
-                flex-direction: column;
-            }
-            .control-card {
-                flex: none; /* remove flex behavior to naturally stack */
-                width: 100%;
-            }
-        }
-        
-        /* Mode Toggle */
-        .mode-toggle {
+        /* ─── SESSION STATS PANEL ─────────────────────────────────── */
+        .stats-panel {
             display: flex;
-            background: rgba(0,0,0,0.3);
-            border-radius: 20px;
-            padding: 5px;
-            margin-bottom: 5px;
+            flex-direction: column;
+            gap: 0;
+            padding: 16px 18px;
+            justify-content: center;
         }
-        .mode-btn {
-            flex: 1;
-            text-align: center;
-            padding: 6px 15px;
-            border-radius: 15px;
-            cursor: pointer;
+        .stats-panel-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: var(--text-label);
+            margin-bottom: 10px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border-glass);
             font-size: 12px;
-            font-weight: bold;
-            color: var(--text-muted);
-            transition: all 0.3s;
         }
-        .mode-btn.active {
-            background: linear-gradient(45deg, var(--primary), var(--secondary));
-            color: white;
-            box-shadow: 0 2px 10px rgba(0, 210, 255, 0.3);
+        .stat-item:last-child { border-bottom: none; }
+        .stat-key { color: var(--text-muted); }
+        .stat-val { font-weight: 700; }
+
+        /* ─── CHARTS ──────────────────────────────────────────────── */
+        .charts-row {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+        .chart-wrapper {
+            flex: 1 1 380px;
+            min-width: 300px;
+            padding: 18px 20px;
+            overflow-x: auto;
+        }
+        .chart-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        .chart-inner { min-width: 500px; height: 200px; }
+
+        /* ─── NODE DIVIDER ─────────────────────────────────────────── */
+        .node-divider {
+            border: none;
+            border-top: 1px solid var(--border-glass);
+            margin: 0;
         }
 
+        /* ─── SELECT ──────────────────────────────────────────────── */
+        select {
+            background: var(--toggle-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border-glass);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* ─── RESPONSIVE ───────────────────────────────────────────── */
+        @media (max-width: 900px) {
+            .controls-container {
+                grid-template-columns: 1fr;
+            }
+            .status-row {
+                grid-template-columns: 1fr 1fr;
+            }
+            .status-row .stats-panel {
+                grid-column: 1 / -1;
+            }
+        }
+        @media (max-width: 600px) {
+            body { padding: 12px 14px; gap: 14px; }
+            .header h1 { font-size: 20px; }
+            .status-row { grid-template-columns: 1fr; }
+            .state-text { font-size: 34px; }
+            .variance-big { font-size: 34px; }
+        }
     </style>
 </head>
 <body>
 
-    <!-- Header -->
+    <!-- ─── HEADER ─────────────────────────────────────────────── -->
     <div class="glass header">
-        <h1>Sentry IoT <span style="color:var(--text-muted); font-size:20px; font-weight:400;">/ Edge Dashboard</span></h1>
-        <div class="conn-status">
-            <span class="pulse-dot" id="conn-dot" style="background-color: var(--warning);"></span>
-            <span id="connection-status" style="color: var(--warning);">Connecting...</span>
+        <div class="header-left">
+            <h1 id="app-title">Sentry IoT <span style="font-weight:300; font-size:18px;">/ Edge Dashboard</span></h1>
+            <div class="header-subtitle" id="app-subtitle">ระบบตรวจจับการล้มแบบ Real-time ด้วยคลื่น Wi-Fi CSI</div>
+        </div>
+        <div class="header-right">
+            <!-- Dark / Light Mode -->
+            <div class="pill-toggle" id="theme-toggle" title="สลับ Dark/Light Mode">
+                <div class="pill-btn active" id="btn-dark"   onclick="setTheme('dark')">Dark</div>
+                <div class="pill-btn"        id="btn-light"  onclick="setTheme('light')">Light</div>
+            </div>
+            <!-- TH / EN Language -->
+            <div class="pill-toggle" id="lang-toggle" title="สลับภาษา TH/EN">
+                <div class="pill-btn active" id="btn-th" onclick="setLang('th')">TH</div>
+                <div class="pill-btn"        id="btn-en" onclick="setLang('en')">EN</div>
+            </div>
+            <!-- WS Status -->
+            <div class="conn-status">
+                <span class="pulse-dot" id="conn-dot"></span>
+                <span id="connection-status" style="color:var(--warning);" data-th="กำลังเชื่อมต่อ..." data-en="Connecting...">กำลังเชื่อมต่อ...</span>
+            </div>
         </div>
     </div>
 
-    <!-- Controls -->
+    <!-- ─── CONTROL PANEL (3 columns in one glass row) ─────────── -->
     <div class="controls-container">
-        <div class="glass control-card">
-            <label>Hardware Connection (Multi-RX)</label>
-            <div id="connection-list" style="display:flex; flex-direction:column; gap:10px; margin-top: 10px;">
-                <!-- Filled dynamically by JS -->
-            </div>
-        </div>
-        
-        <div class="glass control-card">
-            <label>Transmitter Target</label>
-            <div class="mode-toggle">
-                <div class="mode-btn active" id="tx-dedicated" onclick="setTxMode('TX_DEDICATED')">Dedicated Node</div>
-                <div class="mode-btn" id="tx-router" onclick="setTxMode('TX_ROUTER')">Home Router</div>
-            </div>
-            <div style="font-size: 11px; color: var(--text-muted); line-height: 1.3; text-align: center;">
-                Select which Wi-Fi source the ESP32 sniffs.
-            </div>
-        </div>
-        
-        <!-- Removed global threshold card, now injected per NodeCard -->
 
-        <div class="glass control-card" style="flex: 1.5;">
-            <label>Quick Guide</label>
-            <div style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 5px;">
-                1. Select your <b>ESP32 USB port</b> and click Connect.<br>
-                2. Adjust <b>Threshold</b> to tune sensitivity. If variance falls below this line, it forces STATIC.<br>
-                3. For best accuracy, ensure RX and TX antennas have clear line of sight.
+        <!-- COL 1: Hardware Connection -->
+        <div class="glass control-card">
+            <div class="control-card-label" data-th="การเชื่อมต่อฮาร์ดแวร์" data-en="Hardware Connection">การเชื่อมต่อฮาร์ดแวร์</div>
+            <div id="connection-list" style="display:flex; flex-direction:column; gap:8px;">
+                <!-- filled by JS -->
+            </div>
+        </div>
+
+        <!-- COL 2: Transmitter Target -->
+        <div class="glass control-card" style="justify-content:center;">
+            <div class="control-card-label" data-th="แหล่งสัญญาณ Wi-Fi" data-en="Transmitter Target">แหล่งสัญญาณ Wi-Fi</div>
+            <div class="pill-toggle" style="width:100%;">
+                <div class="pill-btn" id="tx-dedicated" onclick="setTxMode('TX_DEDICATED')"
+                     data-th="โหนด ESP32" data-en="Dedicated Node"
+                     title="ต้องมี ESP32 TX แยกต่างหาก">โหนด ESP32</div>
+                <div class="pill-btn active" id="tx-router" onclick="setTxMode('TX_ROUTER')"
+                     data-th="เราเตอร์ที่บ้าน" data-en="Home Router"
+                     title="ใช้คลื่น Wi-Fi จาก Router ที่มีอยู่แล้ว (แนะนำ)">เราเตอร์ที่บ้าน</div>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); line-height:1.4; text-align:center; margin-top:4px;"
+                 data-th="⚠️ โหนด ESP32 ต้องการตัวส่งสัญญาณแยกต่างหาก ถ้าไม่มี กราฟอาจหาย"
+                 data-en="⚠️ Dedicated Node requires a separate TX ESP32. Without it, graphs may disappear.">
+                ⚠️ โหนด ESP32 ต้องการตัวส่งสัญญาณแยกต่างหาก ถ้าไม่มี กราฟอาจหาย
+            </div>
+        </div>
+
+        <!-- COL 3: Quick Guide -->
+        <div class="glass control-card">
+            <div class="control-card-label" data-th="คู่มือเริ่มต้นใช้งาน" data-en="Quick Guide">คู่มือเริ่มต้นใช้งาน</div>
+            <div class="guide-list">
+                <div class="guide-item">
+                    <span class="guide-num">1</span>
+                    <span data-th="เลือก COM Port หรือ Wireless UDP แล้วกด <b>เชื่อมต่อ</b>" data-en="Select a <b>COM Port</b> or <b>Wireless UDP</b> and click Connect.">เลือก COM Port หรือ Wireless UDP แล้วกด <b>เชื่อมต่อ</b></span>
+                </div>
+                <div class="guide-item">
+                    <span class="guide-num">2</span>
+                    <span data-th="เลือก <b>แหล่งสัญญาณ</b>: เราเตอร์ที่บ้าน (แนะนำ) หรือโหนด ESP32 แยก" data-en="Choose <b>Transmitter</b>: Home Router (recommended) or a separate ESP32 TX node.">เลือก <b>แหล่งสัญญาณ</b>: เราเตอร์ที่บ้าน (แนะนำ) หรือโหนด ESP32 แยก</span>
+                </div>
+                <div class="guide-item">
+                    <span class="guide-num">3</span>
+                    <span data-th="ปรับ <b>Threshold</b> ของแต่ละห้อง — ต่ำ = ไวมาก, สูง = ทนทาน Noise" data-en="Adjust <b>Threshold</b> per room — lower = more sensitive, higher = noise tolerant.">ปรับ <b>Threshold</b> ของแต่ละห้อง — ต่ำ = ไวมาก, สูง = ทนทาน Noise</span>
+                </div>
+                <div class="guide-item">
+                    <span class="guide-num">4</span>
+                    <span data-th="ให้เสาอากาศ RX–TX มองเห็นกันโดยตรง (Line-of-sight)" data-en="Ensure RX–TX antennas have clear <b>line-of-sight</b> for best accuracy.">ให้เสาอากาศ RX–TX มองเห็นกันโดยตรง (Line-of-sight)</span>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Dynamic Nodes Container -->
-    <div id="nodes-container" style="display: flex; flex-direction: column; gap: 40px;">
-        <!-- NodeCards will be injected here automatically by JS -->
-    </div>
+    <!-- ─── DYNAMIC NODE CARDS ──────────────────────────────────── -->
+    <div id="nodes-container" style="display:flex; flex-direction:column; gap:32px;"></div>
 
     <script>
-        // Chart JS Global Styling for Dark Theme
-        Chart.defaults.color = 'rgba(255, 255, 255, 0.6)';
-        Chart.defaults.font.family = 'Inter';
-        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
+        // ─── CHART DEFAULTS ──────────────────────────────────────────
+        Chart.defaults.color = 'rgba(230,237,243,0.6)';
+        Chart.defaults.font.family = "'Sarabun','Inter',sans-serif";
+        Chart.defaults.scale.grid.color = 'rgba(255,255,255,0.05)';
 
-        // Active Node Cards Map
+        // ─── THEME ───────────────────────────────────────────────────
+        function setTheme(t) {
+            document.documentElement.setAttribute('data-theme', t);
+            document.getElementById('btn-dark').classList.toggle('active', t === 'dark');
+            document.getElementById('btn-light').classList.toggle('active', t === 'light');
+            localStorage.setItem('sentry-theme', t);
+            // Chart grid color adapts
+            Chart.defaults.scale.grid.color = t === 'light'
+                ? 'rgba(58,123,213,0.08)' : 'rgba(255,255,255,0.05)';
+            Chart.defaults.color = t === 'light'
+                ? 'rgba(26,35,50,0.6)' : 'rgba(230,237,243,0.6)';
+        }
+
+        // ─── LANGUAGE ────────────────────────────────────────────────
+        let currentLang = 'th';
+        function setLang(lang) {
+            currentLang = lang;
+            document.documentElement.setAttribute('data-lang', lang);
+            document.getElementById('btn-th').classList.toggle('active', lang === 'th');
+            document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+            // Translate all elements with data-th / data-en
+            document.querySelectorAll('[data-th]').forEach(el => {
+                el.innerHTML = el.getAttribute('data-' + lang) || el.innerHTML;
+            });
+            localStorage.setItem('sentry-lang', lang);
+        }
+
+        // Load preferences
+        const savedTheme = localStorage.getItem('sentry-theme') || 'dark';
+        const savedLang  = localStorage.getItem('sentry-lang')  || 'th';
+        setTheme(savedTheme);
+        setLang(savedLang);
+
+        // ─── TX Mode ─────────────────────────────────────────────────
+        let currentTxMode = "TX_ROUTER";
+        function setTxMode(mode) {
+            ws.send(JSON.stringify({command:"set_tx_mode", tx_mode:mode}));
+        }
+        function syncTxUI(mode) {
+            currentTxMode = mode;
+            document.getElementById('tx-dedicated').classList.toggle('active', mode === 'TX_DEDICATED');
+            document.getElementById('tx-router').classList.toggle('active', mode === 'TX_ROUTER');
+        }
+
+        // ─── WebSocket ───────────────────────────────────────────────
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+
+        ws.onopen = () => {
+            const el = document.getElementById('connection-status');
+            el.innerText = currentLang === 'th' ? 'เชื่อมต่อแล้ว' : 'Connected';
+            el.style.color = 'var(--success)';
+            const dot = document.getElementById('conn-dot');
+            dot.style.background = 'var(--success)';
+            dot.classList.add('connected');
+            ws.send(JSON.stringify({command:"get_config"}));
+        };
+
+        ws.onclose = () => {
+            const el = document.getElementById('connection-status');
+            el.innerText = currentLang === 'th' ? 'ขาดการเชื่อมต่อ' : 'Disconnected';
+            el.style.color = 'var(--danger)';
+            const dot = document.getElementById('conn-dot');
+            dot.style.background = 'var(--danger)';
+            dot.classList.remove('connected');
+        };
+
+        // ─── NODE CARD CLASS ──────────────────────────────────────────
         const activeNodes = {};
 
         class NodeCard {
             constructor(locationName) {
                 this.locationName = locationName;
-                this.idSafeName = locationName.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+                this.sid = locationName.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9\-]/g,'');
+                this.sessionFalls = 0;
+                this.sessionMovements = 0;
+                this.frameRate = 0;
+                this._frameCounter = 0;
+                this._frameTimer = setInterval(() => {
+                    this.frameRate = this._frameCounter;
+                    this._frameCounter = 0;
+                    const el = document.getElementById(`stat-hz-${this.sid}`);
+                    if (el) el.innerText = this.frameRate + ' Hz';
+                }, 1000);
+
+                // Parse display name vs port tag
+                const match = locationName.match(/^\[(.+?)\]\s*(.*)/);
+                const displayName = match ? match[2] : locationName;
+                const portTag     = match ? match[1] : '';
+
                 this.container = document.createElement('div');
                 this.container.className = 'node-card';
-                this.container.style.borderTop = '1px solid rgba(255,255,255,0.1)';
-                this.container.style.paddingTop = '15px';
-                
+
+                const simTooltipTH = 'ใช้สำหรับ:<br>• ทดสอบว่า LINE Alert ส่งถึงผู้ดูแลหรือเปล่า<br>• Demo ระบบโดยไม่ต้องเคลื่อนไหวจริง<br>• ตรวจสอบว่า Threshold ตั้งไว้ถูกหรือเปล่า';
+                const simTooltipEN = 'Use to:<br>• Test that LINE alerts reach caregivers<br>• Demo the system without real movement<br>• Verify your Threshold is correctly set';
+
                 this.container.innerHTML = `
-                    <div style="font-size: 22px; font-weight: 800; margin-bottom: 15px; color: var(--primary); text-transform: uppercase;">
-                        Location: ${locationName}
-                    </div>
-                    <div class="status-container" style="display: flex; gap: 20px; margin-bottom: 20px;">
-                        <div class="glass state-panel state-static" id="state-panel-${this.idSafeName}" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 20px;">
-                            <div id="state-box-${this.idSafeName}" style="font-size: 48px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 2;">STATIC</div>
-                            <div style="color: rgba(255,255,255,0.8); margin-top: 10px; font-weight: 600; letter-spacing: 2px;">LIVE INFERENCE</div>
+                    <div class="node-header">
+                        <div>
+                            <span class="node-title" data-th="ตำแหน่ง: ${displayName}" data-en="Location: ${displayName}">ตำแหน่ง: ${displayName}</span>
+                            <span class="node-id-tag">${portTag ? '[' + portTag + ']' : ''}</span>
                         </div>
-                        <div class="glass metric-panel" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 20px;">
-                            <div class="metric-label" style="font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Temporal Variance</div>
-                            <div class="metric-value" id="variance-val-${this.idSafeName}" style="font-size: 48px; font-weight: 800; color: var(--primary); text-shadow: 0 0 20px rgba(0, 210, 255, 0.4);">0.00</div>
-                            <div style="width: 80%; margin-top: 15px;">
-                                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-bottom:5px;">
-                                    <span>Sensitivity Threshold</span>
-                                    <span id="thresh-val-${this.idSafeName}" style="font-weight:bold; color:white;">2.0</span>
+                        <div class="node-sim-btns">
+                            <div class="sim-tooltip-wrap">
+                                <button class="btn-sim" onclick="simulate('${locationName}', 0)"
+                                        data-th="ว่าง" data-en="Static">ว่าง</button>
+                                <div class="sim-tooltip" data-th="${simTooltipTH}" data-en="${simTooltipEN}">${simTooltipTH}</div>
+                            </div>
+                            <div class="sim-tooltip-wrap">
+                                <button class="btn-sim" onclick="simulate('${locationName}', 1)"
+                                        data-th="เคลื่อนไหว" data-en="Movement">เคลื่อนไหว</button>
+                                <div class="sim-tooltip" data-th="${simTooltipTH}" data-en="${simTooltipEN}">${simTooltipTH}</div>
+                            </div>
+                            <div class="sim-tooltip-wrap">
+                                <button class="btn-sim" style="background:linear-gradient(45deg,var(--danger),#ff4b2b);"
+                                        onclick="simulate('${locationName}', 2)"
+                                        data-th="จำลองการล้ม" data-en="Simulate Fall">จำลองการล้ม</button>
+                                <div class="sim-tooltip" data-th="${simTooltipTH}" data-en="${simTooltipEN}">${simTooltipTH}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status-row">
+                        <!-- State -->
+                        <div class="glass state-panel state-static" id="state-panel-${this.sid}">
+                            <div class="state-text" id="state-box-${this.sid}">STATIC</div>
+                            <div class="state-sub" data-th="สถานะปัจจุบัน (Real-time)" data-en="LIVE INFERENCE">สถานะปัจจุบัน (Real-time)</div>
+                        </div>
+
+                        <!-- Variance + Threshold slider -->
+                        <div class="glass variance-panel">
+                            <div class="variance-lbl" data-th="ค่า Variance" data-en="Motion Variance">ค่า Variance</div>
+                            <div class="variance-big" id="variance-val-${this.sid}">0.00</div>
+                            <div class="threshold-row">
+                                <div class="threshold-header">
+                                    <span data-th="Sensitivity Threshold" data-en="Sensitivity Threshold">Sensitivity Threshold</span>
+                                    <span id="thresh-val-${this.sid}" style="font-weight:800; color:var(--warning);">2.0</span>
                                 </div>
-                                <input type="range" id="thresh-slider-${this.idSafeName}" min="0.1" max="10.0" step="0.1" value="2.0" 
-                                       onchange="setNodeThreshold('${this.locationName}', this.value)"
-                                       oninput="document.getElementById('thresh-val-${this.idSafeName}').innerText = parseFloat(this.value).toFixed(1)">
+                                <input type="range" id="thresh-slider-${this.sid}" min="0.1" max="10.0" step="0.1" value="2.0"
+                                       onchange="setNodeThreshold('${locationName}', this.value)"
+                                       oninput="document.getElementById('thresh-val-${this.sid}').innerText = parseFloat(this.value).toFixed(1)">
+                            </div>
+                        </div>
+
+                        <!-- Session Stats -->
+                        <div class="glass stats-panel">
+                            <div class="stats-panel-title" data-th="สถิติเซสชันนี้" data-en="Session Statistics">สถิติเซสชันนี้</div>
+                            <div class="stat-item">
+                                <span class="stat-key" data-th="ครั้งที่ล้ม" data-en="Falls Detected">ครั้งที่ล้ม</span>
+                                <span class="stat-val" id="stat-falls-${this.sid}" style="color:var(--danger);">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-key" data-th="ความเคลื่อนไหว" data-en="Movements">ความเคลื่อนไหว</span>
+                                <span class="stat-val" id="stat-moves-${this.sid}" style="color:var(--warning);">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-key" data-th="อัตราสัญญาณ" data-en="Frame Rate">อัตราสัญญาณ</span>
+                                <span class="stat-val" id="stat-hz-${this.sid}" style="color:var(--primary);">0 Hz</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-key">Subcarriers</span>
+                                <span class="stat-val" style="color:var(--text-muted);">52</span>
                             </div>
                         </div>
                     </div>
-                    <div class="charts-container" style="display: flex; flex-wrap: wrap; gap: 25px;">
-                        <div class="glass chart-wrapper" style="flex: 1 1 400px; min-width: 300px; padding: 20px; position: relative; overflow-x: auto;">
-                            <div style="min-width: 600px; height: 100%;">
-                                <canvas id="varianceChart-${this.idSafeName}"></canvas>
+
+                    <div class="charts-row">
+                        <div class="glass chart-wrapper">
+                            <div class="chart-title" data-th="Live Motion Index (Variance)" data-en="Live Motion Index (Variance)">Live Motion Index (Variance)</div>
+                            <div class="chart-inner">
+                                <canvas id="varianceChart-${this.sid}"></canvas>
                             </div>
                         </div>
-                        <div class="glass chart-wrapper" style="flex: 1 1 400px; min-width: 300px; padding: 20px; position: relative; overflow-x: auto;">
-                            <div style="min-width: 600px; height: 100%;">
-                                <canvas id="rawChart-${this.idSafeName}"></canvas>
+                        <div class="glass chart-wrapper">
+                            <div class="chart-title" data-th="Raw CSI — 52 Subcarrier Snapshot" data-en="Raw CSI — 52 Subcarrier Snapshot">Raw CSI — 52 Subcarrier Snapshot</div>
+                            <div class="chart-inner">
+                                <canvas id="rawChart-${this.sid}"></canvas>
                             </div>
                         </div>
                     </div>
                 `;
-                
+
                 document.getElementById('nodes-container').appendChild(this.container);
-                
-                // Initialize Charts
-                const varCtx = document.getElementById(`varianceChart-${this.idSafeName}`).getContext('2d');
+                // Apply current language translations to new elements
+                this.container.querySelectorAll('[data-th]').forEach(el => {
+                    el.innerHTML = el.getAttribute('data-' + currentLang) || el.innerHTML;
+                });
+
+                // Variance Chart
+                const varCtx = document.getElementById(`varianceChart-${this.sid}`).getContext('2d');
                 this.varianceChart = new Chart(varCtx, {
                     type: 'line',
                     data: {
                         labels: Array(150).fill(''),
-                        datasets: [{
-                            label: 'Motion Index (Variance)',
-                            data: Array(150).fill(0),
-                            borderColor: '#00d2ff',
-                            backgroundColor: 'rgba(0, 210, 255, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            fill: true,
-                            tension: 0.3
-                        },
-                        {
-                            label: 'Threshold',
-                            data: Array(150).fill(2.0),
-                            borderColor: '#fbc531',
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            pointRadius: 0,
-                            fill: false,
-                            tension: 0
-                        }]
+                        datasets: [
+                            { label: 'Variance', data: Array(150).fill(0), borderColor:'#00d2ff', backgroundColor:'rgba(0,210,255,0.08)', borderWidth:2, pointRadius:0, fill:true, tension:0.3 },
+                            { label: 'Threshold', data: Array(150).fill(2.0), borderColor:'#f5a623', borderWidth:2, borderDash:[5,5], pointRadius:0, fill:false, tension:0 }
+                        ]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        animation: false,
-                        plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } },
-                        scales: { 
-                            x: { display: false },
-                            y: { min: 0, suggestedMax: 20 } 
-                        }
+                        responsive:true, maintainAspectRatio:false, animation:false,
+                        plugins: { legend:{ position:'top', labels:{ boxWidth:12 } } },
+                        scales: { x:{ display:false }, y:{ min:0, suggestedMax:20 } }
                     }
                 });
 
-                const rawCtx = document.getElementById(`rawChart-${this.idSafeName}`).getContext('2d');
+                // Raw CSI Chart
+                const rawCtx = document.getElementById(`rawChart-${this.sid}`).getContext('2d');
                 this.rawChart = new Chart(rawCtx, {
                     type: 'line',
                     data: {
-                        labels: Array.from({length: 52}, (_, i) => i+1),
+                        labels: Array.from({length:52}, (_,i) => i+1),
                         datasets: [{
-                            label: '52 Subcarrier Snapshot',
-                            data: Array(52).fill(0),
-                            borderColor: '#3a7bd5',
-                            backgroundColor: 'rgba(58, 123, 213, 0.2)',
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            fill: true,
-                            tension: 0.4
+                            label: '52 Subcarriers', data: Array(52).fill(0),
+                            borderColor:'#3a7bd5', backgroundColor:'rgba(58,123,213,0.15)',
+                            borderWidth:2, pointRadius:0, fill:true, tension:0.4
                         }]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        animation: false,
-                        plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } },
-                        scales: { 
-                            x: { display: false },
-                            y: { min: 0, max: 50 } 
-                        }
+                        responsive:true, maintainAspectRatio:false, animation:false,
+                        plugins: { legend:{ position:'top', labels:{ boxWidth:12 } } },
+                        scales: { x:{ display:false }, y:{ min:0, suggestedMax:50 } }
                     }
                 });
             }
-            
-            update(data) {
-                const stateBox = document.getElementById(`state-box-${this.idSafeName}`);
-                const statePanel = document.getElementById(`state-panel-${this.idSafeName}`);
-                
-                statePanel.classList.remove('state-static', 'state-movement', 'state-fall');
-                if (data.state === 2) {
-                    stateBox.innerText = 'FALL DETECTED';
-                    statePanel.classList.add('state-fall');
-                } else if (data.state === 1) {
-                    stateBox.innerText = 'MOVEMENT';
-                    statePanel.classList.add('state-movement');
-                } else {
-                    stateBox.innerText = 'STATIC';
-                    statePanel.classList.add('state-static');
-                }
 
-                document.getElementById(`variance-val-${this.idSafeName}`).innerText = data.variance.toFixed(2);
-                
-                // Don't overwrite the slider if the user is actively dragging it
-                const slider = document.getElementById(`thresh-slider-${this.idSafeName}`);
+            update(data) {
+                this._frameCounter++;
+
+                // State panel
+                const statePanel = document.getElementById(`state-panel-${this.sid}`);
+                const stateBox   = document.getElementById(`state-box-${this.sid}`);
+                statePanel.classList.remove('state-static','state-movement','state-fall');
+
+                const stateLabels = {
+                    th: ['หยุดนิ่ง', 'มีการเคลื่อนไหว', 'ตรวจพบการล้ม!'],
+                    en: ['STATIC',   'MOVEMENT',          'FALL DETECTED!']
+                };
+                stateBox.innerText = stateLabels[currentLang][data.state] || 'STATIC';
+
+                if      (data.state === 2) { statePanel.classList.add('state-fall');     this.sessionFalls++;     document.getElementById(`stat-falls-${this.sid}`).innerText = this.sessionFalls; }
+                else if (data.state === 1) { statePanel.classList.add('state-movement'); this.sessionMovements++;  document.getElementById(`stat-moves-${this.sid}`).innerText = this.sessionMovements; }
+                else                       { statePanel.classList.add('state-static'); }
+
+                // Variance
+                document.getElementById(`variance-val-${this.sid}`).innerText = data.variance.toFixed(2);
+
+                // Slider
+                const slider = document.getElementById(`thresh-slider-${this.sid}`);
                 if (document.activeElement !== slider) {
                     slider.value = data.threshold;
-                    document.getElementById(`thresh-val-${this.idSafeName}`).innerText = data.threshold.toFixed(1);
+                    document.getElementById(`thresh-val-${this.sid}`).innerText = data.threshold.toFixed(1);
                 }
 
-                let varData = this.varianceChart.data.datasets[0].data;
-                varData.shift();
-                varData.push(data.variance);
-                let threshData = this.varianceChart.data.datasets[1].data;
-                threshData.shift();
-                threshData.push(data.threshold);
+                // Charts (in-place mutation)
+                const vData = this.varianceChart.data.datasets[0].data;
+                vData.shift(); vData.push(data.variance);
+                const tData = this.varianceChart.data.datasets[1].data;
+                tData.shift(); tData.push(data.threshold);
                 this.varianceChart.update('none');
 
-                let rawData = this.rawChart.data.datasets[0].data;
-                for(let i = 0; i < data.amplitudes.length; i++) {
-                    rawData[i] = data.amplitudes[i];
-                }
+                const rData = this.rawChart.data.datasets[0].data;
+                for (let i = 0; i < data.amplitudes.length; i++) rData[i] = data.amplitudes[i];
                 this.rawChart.update('none');
             }
 
             destroy() {
-                if (this.varianceChart) {
-                    this.varianceChart.destroy();
-                }
-                if (this.rawChart) {
-                    this.rawChart.destroy();
-                }
-                if (this.container && this.container.parentNode) {
-                    this.container.parentNode.removeChild(this.container);
-                }
+                clearInterval(this._frameTimer);
+                if (this.varianceChart) this.varianceChart.destroy();
+                if (this.rawChart)      this.rawChart.destroy();
+                if (this.container?.parentNode) this.container.parentNode.removeChild(this.container);
             }
         }
 
-        // WebSocket Connection
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
-        
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-            document.getElementById('connection-status').innerText = 'Connected';
-            document.getElementById('connection-status').style.color = 'var(--success)';
-            document.getElementById('conn-dot').style.backgroundColor = 'var(--success)';
-            ws.send(JSON.stringify({command: "get_config"}));
-        };
-
-        ws.onclose = () => {
-            document.getElementById('connection-status').innerText = 'Disconnected';
-            document.getElementById('connection-status').style.color = 'var(--danger)';
-            document.getElementById('conn-dot').style.backgroundColor = 'var(--danger)';
-        };
-
-        // GUI Controls
+        // ─── CONTROLS ────────────────────────────────────────────────
         function setNodeThreshold(nodeId, val) {
-            document.getElementById('thresh-val-' + nodeId.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')).innerText = parseFloat(val).toFixed(1);
-            ws.send(JSON.stringify({command: "set_threshold", node_id: nodeId, value: val}));
-        }
-
-        let currentTxMode = "TX_DEDICATED";
-        
-        function setTxMode(modeStr) {
-            ws.send(JSON.stringify({command: "set_tx_mode", tx_mode: modeStr}));
+            const sid = nodeId.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9\-]/g,'');
+            document.getElementById('thresh-val-' + sid).innerText = parseFloat(val).toFixed(1);
+            ws.send(JSON.stringify({command:"set_threshold", node_id:nodeId, value:val}));
         }
 
         function toggleSerial(port, isConnected) {
-            if (isConnected) {
-                ws.send(JSON.stringify({command: "disconnect_serial", port: port}));
-            } else {
-                ws.send(JSON.stringify({command: "connect_serial", port: port}));
-            }
+            ws.send(JSON.stringify({command: isConnected ? "disconnect_serial" : "connect_serial", port}));
         }
 
         function toggleUDP(port, isConnected) {
-            if (isConnected) {
-                ws.send(JSON.stringify({command: "disconnect_udp", port: parseInt(port)}));
-            } else {
-                ws.send(JSON.stringify({command: "connect_udp", port: parseInt(port)}));
-            }
+            ws.send(JSON.stringify({command: isConnected ? "disconnect_udp" : "connect_udp", port: parseInt(port)}));
         }
 
-        // Buffered rendering - decouple WS messages from chart repaints
-        let pendingData = null;
+        function simulate(nodeId, state) {
+            ws.send(JSON.stringify({command:"simulate_state", node_id:nodeId, state}));
+        }
+
+        // ─── BUFFERED RENDER ─────────────────────────────────────────
+        let pendingData  = null;
         let rafScheduled = false;
 
         function renderFrame() {
             rafScheduled = false;
-            if (!pendingData || !pendingData.nodes) return;
+            if (!pendingData?.nodes) return;
             const data = pendingData;
             pendingData = null;
 
-            // Remove missing nodes (stale cleanup)
+            // Remove stale nodes
             for (const loc in activeNodes) {
                 if (!(loc in data.nodes)) {
                     activeNodes[loc].destroy();
                     delete activeNodes[loc];
+                    // Remove divider if any
+                    const div = document.getElementById('divider-' + loc.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9\-]/g,''));
+                    if (div) div.remove();
                 }
             }
 
-            // Update or add current nodes
-            for (const [locationName, nodeData] of Object.entries(data.nodes)) {
-                if (!activeNodes[locationName]) {
-                    activeNodes[locationName] = new NodeCard(locationName);
+            // Add / update nodes
+            const nodeKeys = Object.keys(data.nodes);
+            nodeKeys.forEach((loc, idx) => {
+                if (!activeNodes[loc]) {
+                    // Insert divider before node if not first
+                    if (Object.keys(activeNodes).length > 0 || idx > 0) {
+                        const hr = document.createElement('hr');
+                        hr.className = 'node-divider';
+                        hr.id = 'divider-' + loc.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9\-]/g,'');
+                        document.getElementById('nodes-container').appendChild(hr);
+                    }
+                    activeNodes[loc] = new NodeCard(loc);
                 }
-                activeNodes[locationName].update(nodeData);
-            }
+                activeNodes[loc].update(data.nodes[loc]);
+            });
         }
 
+        // ─── WS MESSAGE ──────────────────────────────────────────────
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
-            // Handle Config
-            if (data.type === "config") {
-                // Global threshold is handled per-node now.
-                
-                // Sync TX Mode UI
-                currentTxMode = data.tx_mode || "TX_DEDICATED";
-                if (currentTxMode === "TX_DEDICATED") {
-                    document.getElementById('tx-dedicated').classList.add('active');
-                    document.getElementById('tx-router').classList.remove('active');
-                } else {
-                    document.getElementById('tx-dedicated').classList.remove('active');
-                    document.getElementById('tx-router').classList.add('active');
-                }
-                
+
+            if (data.type === 'config') {
+                syncTxUI(data.tx_mode || 'TX_ROUTER');
+
                 // Build connection list
                 const connList = document.getElementById('connection-list');
                 connList.innerHTML = '';
-                
-                // UDP Row
-                const isUdpConnected = data.active_udp_ports && data.active_udp_ports.includes(5000);
-                const udpRow = document.createElement('div');
-                udpRow.className = 'control-row';
-                udpRow.style.marginTop = "0";
-                udpRow.style.marginBottom = "5px";
+
+                // UDP row
+                const udpConn = data.active_udp_ports?.includes(5000);
+                const udpRow  = document.createElement('div');
+                udpRow.className = 'conn-row';
                 udpRow.innerHTML = `
-                    <div style="flex:1; display:flex; align-items:center;">
-                        <span style="font-weight:bold; color:var(--primary); margin-right:10px;">Wireless UDP</span> 
-                        <span style="color:var(--text-muted); font-size:12px;">(Port 5000)</span>
+                    <div class="conn-row-info">
+                        <div class="conn-row-title">Wireless UDP</div>
+                        <div class="conn-row-sub">Port 5000</div>
                     </div>
-                    <button style="background: ${isUdpConnected ? 'linear-gradient(45deg, var(--danger), #ff4b2b)' : 'linear-gradient(45deg, var(--primary), var(--secondary))'}" 
-                            onclick="toggleUDP(5000, ${isUdpConnected})">
-                        ${isUdpConnected ? 'Disconnect' : 'Connect'}
-                    </button>
-                `;
+                    <button class="${udpConn ? 'btn-danger' : ''}"
+                            onclick="toggleUDP(5000, ${udpConn})"
+                            data-th="${udpConn ? 'ยกเลิก' : 'เชื่อมต่อ'}"
+                            data-en="${udpConn ? 'Disconnect' : 'Connect'}">
+                        ${currentLang === 'th' ? (udpConn ? 'ยกเลิก' : 'เชื่อมต่อ') : (udpConn ? 'Disconnect' : 'Connect')}
+                    </button>`;
                 connList.appendChild(udpRow);
-                
-                // Serial Rows
-                if (data.available_ports && data.available_ports.length > 0) {
+
+                // Serial rows
+                if (data.available_ports?.length > 0) {
                     data.available_ports.forEach(p => {
-                        const isConnected = data.active_serial_ports && data.active_serial_ports.includes(p);
-                        const row = document.createElement('div');
-                        row.className = 'control-row';
-                        row.style.marginTop = "0";
-                        row.style.marginBottom = "5px";
+                        const isConn = data.active_serial_ports?.includes(p);
+                        const row    = document.createElement('div');
+                        row.className = 'conn-row';
                         row.innerHTML = `
-                            <div style="flex:1; font-weight:bold;">${p}</div>
-                            <button style="background: ${isConnected ? 'linear-gradient(45deg, var(--danger), #ff4b2b)' : 'linear-gradient(45deg, var(--primary), var(--secondary))'}" 
-                                    onclick="toggleSerial('${p}', ${isConnected})">
-                                ${isConnected ? 'Disconnect' : 'Connect'}
-                            </button>
-                        `;
+                            <div class="conn-row-info">
+                                <div class="conn-row-title">${p}</div>
+                                <div class="conn-row-sub">USB Serial</div>
+                            </div>
+                            <button class="${isConn ? 'btn-danger' : ''}"
+                                    onclick="toggleSerial('${p}', ${isConn})">
+                                ${currentLang === 'th' ? (isConn ? 'ยกเลิก' : 'เชื่อมต่อ') : (isConn ? 'Disconnect' : 'Connect')}
+                            </button>`;
                         connList.appendChild(row);
                     });
                 } else {
                     const row = document.createElement('div');
-                    row.style.color = "var(--text-muted)";
-                    row.style.fontSize = "13px";
-                    row.innerText = "No USB devices detected.";
+                    row.style.cssText = 'color:var(--text-muted); font-size:12px; padding:8px 0;';
+                    row.setAttribute('data-th', 'ไม่พบอุปกรณ์ USB');
+                    row.setAttribute('data-en', 'No USB devices detected.');
+                    row.innerText = currentLang === 'th' ? 'ไม่พบอุปกรณ์ USB' : 'No USB devices detected.';
                     connList.appendChild(row);
                 }
-                
                 return;
             }
-            
-            // Buffer live data and schedule a render on next animation frame
+
+            // Live data
             pendingData = data;
             if (!rafScheduled) {
                 rafScheduled = true;
