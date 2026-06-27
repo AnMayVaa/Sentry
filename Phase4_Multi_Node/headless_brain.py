@@ -243,7 +243,12 @@ class HeadlessBrain:
             try:
                 with open(index_path, "rb") as f:
                     content = f.read()
-                return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8")], content)
+                return (http.HTTPStatus.OK, [
+                    ("Content-Type", "text/html; charset=utf-8"),
+                    ("Cache-Control", "no-cache, no-store, must-revalidate"),
+                    ("Pragma", "no-cache"),
+                    ("Expires", "0")
+                ], content)
             except Exception as e:
                 return (http.HTTPStatus.INTERNAL_SERVER_ERROR, [], str(e).encode())
         elif path == "/ws":
