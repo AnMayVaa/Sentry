@@ -117,6 +117,8 @@
             border: 1px solid var(--border-glass);
         }
         .pill-btn {
+            flex: 1;
+            text-align: center;
             padding: 5px 14px;
             border-radius: 20px;
             cursor: pointer;
@@ -296,29 +298,6 @@
             align-items: center;
             flex-wrap: wrap;
         }
-        .sim-tooltip-wrap {
-            position: relative;
-        }
-        .sim-tooltip {
-            position: absolute;
-            bottom: calc(100% + 8px);
-            right: 0;
-            background: #1a2332;
-            color: #e6edf3;
-            font-size: 11px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            width: 210px;
-            line-height: 1.5;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            border: 1px solid var(--border-glass);
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 100;
-        }
-        .sim-tooltip-wrap:hover .sim-tooltip { opacity: 1; }
-        [data-theme="light"] .sim-tooltip { background: #fff; color: #1a2332; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
 
         /* ─── STATUS ROW (state + variance + stats) ─────────────────── */
         .status-row {
@@ -700,22 +679,13 @@
                             <span class="node-id-tag">${portTag ? '[' + portTag + ']' : ''}</span>
                         </div>
                         <div class="node-sim-btns">
-                            <div class="sim-tooltip-wrap">
-                                <button class="btn-sim" onclick="simulate('${locationName}', 0)"
-                                        data-th="ว่าง" data-en="Static">ว่าง</button>
-                                <div class="sim-tooltip" data-th="${simTooltipTH}" data-en="${simTooltipEN}">${simTooltipTH}</div>
-                            </div>
-                            <div class="sim-tooltip-wrap">
-                                <button class="btn-sim" onclick="simulate('${locationName}', 1)"
-                                        data-th="เคลื่อนไหว" data-en="Movement">เคลื่อนไหว</button>
-                                <div class="sim-tooltip" data-th="${simTooltipTH}" data-en="${simTooltipEN}">${simTooltipTH}</div>
-                            </div>
-                            <div class="sim-tooltip-wrap">
-                                <button class="btn-sim" style="background:linear-gradient(45deg,var(--danger),#ff4b2b);"
-                                        onclick="simulate('${locationName}', 2)"
-                                        data-th="จำลองการล้ม" data-en="Simulate Fall">จำลองการล้ม</button>
-                                <div class="sim-tooltip" data-th="${simTooltipTH}" data-en="${simTooltipEN}">${simTooltipTH}</div>
-                            </div>
+                            <button class="btn-sim" onclick="simulate('${locationName}', 0)"
+                                    data-th="ว่าง" data-en="Static">ว่าง</button>
+                            <button class="btn-sim" onclick="simulate('${locationName}', 1)"
+                                    data-th="เคลื่อนไหว" data-en="Movement">เคลื่อนไหว</button>
+                            <button class="btn-sim" style="background:linear-gradient(45deg,var(--danger),#ff4b2b);"
+                                    onclick="simulate('${locationName}', 2)"
+                                    data-th="จำลองการล้ม" data-en="Simulate Fall">จำลองการล้ม</button>
                         </div>
                     </div>
 
