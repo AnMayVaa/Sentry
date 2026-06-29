@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentry — Debug Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card: rgba(255,255,255,0.05);
+            --border: rgba(255,255,255,0.09);
+            --primary: #00d2ff;
+            --success: #00f260;
+            --warning: #f5a623;
+            --danger: #ff416c;
+            --purple: #a78bfa;
+            --text: #e6edf3;
+            --muted: rgba(230,237,243,0.5);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px 24px;
+            backdrop-filter: blur(12px);
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 800;
+            background: linear-gradient(90deg, var(--danger), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header-right { display: flex; align-items: center; gap: 16px; }
+        .ws-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--warning);
+            display: inline-block;
+        }
+        .ws-dot.on { background: var(--success); animation: blink 2s infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .ws-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+        a.back-btn {
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 6px 14px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+        a.back-btn:hover { background: rgba(0,210,255,0.12); }
+
+        .log-bar {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-size: 12px;
+            color: var(--muted);
+            font-family: monospace;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .log-bar span { color: var(--text); }
+
+        #nodes-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .node-block {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            backdrop-filter: blur(10px);
+        }
+        .node-name {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 14px;
+            letter-spacing: 0.5px;
+        }
+
+        /* ── State section ── */
+        .section-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+        .state-btns { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .state-btn {
+            flex: 1;
+            min-width: 100px;
+            padding: 12px 10px;
+            border-radius: 10px;
+            border: 2px solid transparent;
+            font-weight: 700;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            position: relative;
+        }
+        /* idle styles */
+        .state-btn.static-btn  { background: rgba(0,242,96,.08); border-color: rgba(0,242,96,.3); color: var(--success); }
+        .state-btn.move-btn    { background: rgba(245,166,35,.08); border-color: rgba(245,166,35,.3); color: var(--warning); }
+        .state-btn.fall-btn    { background: rgba(255,65,108,.08); border-color: rgba(255,65,108,.3); color: var(--danger); }
+        /* active / toggled on */
+        .state-btn.active.static-btn { background: rgba(0,242,96,.25); border-color: var(--success); box-shadow: 0 0 16px rgba(0,242,96,.35); }
+        .state-btn.active.move-btn   { background: rgba(245,166,35,.25); border-color: var(--warning); box-shadow: 0 0 16px rgba(245,166,35,.35); }
+        .state-btn.active.fall-btn   { background: rgba(255,65,108,.3); border-color: var(--danger); box-shadow: 0 0 20px rgba(255,65,108,.45); animation: pulse 1.2s infinite; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 20px rgba(255,65,108,.45)} 50%{box-shadow:0 0 32px rgba(255,65,108,.7)} }
+        .state-btn:hover { transform: translateY(-2px); }
+        .state-btn .mode-tag {
+            position: absolute;
+            top: 4px; right: 6px;
+            font-size: 9px;
+            opacity: 0.6;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        /* ── LINE section ── */
+        .line-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .line-btn {
+            background: linear-gradient(45deg, #06c755, #00a041);
+            color: #fff;
+            border: none;
+            padding: 10px 22px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 14px rgba(6,199,85,.3);
+        }
+        .line-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(6,199,85,.5); }
+        .line-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .line-cooldown { font-size: 12px; color: var(--muted); }
+
+        .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+        .empty-msg {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 40px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .empty-msg strong { color: var(--text); display: block; margin-bottom: 6px; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <h1>Debug Panel</h1>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">csi.ohmpatumwan.com/debug</div>
+        </div>
+        <div class="header-right">
+            <span class="ws-dot" id="ws-dot"></span>
+            <span class="ws-label" id="ws-label">Connecting...</span>
+            <a class="back-btn" href="/">Main Dashboard</a>
+        </div>
+    </div>
+
+    <div class="log-bar" id="log-bar">Waiting for action...</div>
+
+    <div id="nodes-panel">
+        <div class="empty-msg">
+            <strong>No active nodes</strong>
+            Connect an RX on the main dashboard first, then refresh this page.
+        </div>
+    </div>
+
+<script>
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProto}//${location.host}/ws`);
+
+    const dot   = document.getElementById('ws-dot');
+    const label = document.getElementById('ws-label');
+    const logBar = document.getElementById('log-bar');
+    const panel = document.getElementById('nodes-panel');
+
+    // node_id → { activeState, lineCooldown }
+    const nodeStates = {};
+    // Toggle mode: true = toggle (click to lock), false = hold (mousedown/up)
+    // We'll offer BOTH behaviours with a mode switch per button
+    let toggleMode = true; // default: toggle
+
+    function log(msg) {
+        logBar.innerHTML = `<span>${new Date().toLocaleTimeString()}</span> ${msg}`;
+    }
+
+    ws.onopen = () => {
+        dot.className = 'ws-dot on';
+        label.textContent = 'Connected';
+        ws.send(JSON.stringify({command: 'get_nodes'}));
+        ws.send(JSON.stringify({command: 'get_config'}));
+        log('WebSocket connected — fetching node list...');
+    };
+    ws.onclose = () => {
+        dot.className = 'ws-dot';
+        label.textContent = 'Disconnected';
+        log('WebSocket disconnected.');
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'nodes_list') {
+            buildNodes(data.nodes);
+        }
+
+        if (data.type === 'data' && data.nodes) {
+            // Sync realtime state indicators but don't overwrite simulated locks
+            // (We just show what the server broadcasts — it already reflects our simulations)
+            Object.keys(data.nodes).forEach(loc => {
+                if (!nodeStates[loc]) buildNodes(Object.keys(data.nodes));
+            });
+        }
+    };
+
+    function buildNodes(nodeList) {
+        if (!nodeList || nodeList.length === 0) return;
+        panel.innerHTML = '';
+        nodeList.forEach(nodeId => {
+            if (!nodeStates[nodeId]) nodeStates[nodeId] = { activeState: null, cooldown: false };
+            panel.appendChild(makeNodeBlock(nodeId));
+        });
+    }
+
+    function makeNodeBlock(nodeId) {
+        const block = document.createElement('div');
+        block.className = 'node-block';
+        block.id = 'block-' + safeId(nodeId);
+
+        const states = [
+            { label: 'STATIC',   cls: 'static-btn', state: 0 },
+            { label: 'MOVEMENT', cls: 'move-btn',   state: 1 },
+            { label: 'FALL',     cls: 'fall-btn',   state: 2 },
+        ];
+
+        const btnIds = states.map(s => `btn-${safeId(nodeId)}-${s.state}`);
+
+        block.innerHTML = `
+            <div class="node-name">${nodeId}</div>
+
+            <div class="section-label">Simulate State (toggle)</div>
+            <div class="state-btns">
+                ${states.map(s => `
+                <button class="state-btn ${s.cls}" id="btn-${safeId(nodeId)}-${s.state}"
+                        data-node="${nodeId}" data-state="${s.state}">
+                    ${s.label}
+                </button>`).join('')}
+            </div>
+
+            <hr class="divider">
+
+            <div class="section-label">LINE Alert Test</div>
+            <div class="line-row">
+                <button class="line-btn" id="line-${safeId(nodeId)}" onclick="sendLine('${nodeId}')">
+                    Send LINE Alert
+                </button>
+                <span class="line-cooldown" id="line-cd-${safeId(nodeId)}">Fires real LINE push to caregiver</span>
+            </div>
+        `;
+
+        // Attach toggle logic to state buttons
+        states.forEach(s => {
+            const btn = block.querySelector(`#btn-${safeId(nodeId)}-${s.state}`);
+            btn.addEventListener('click', () => toggleState(nodeId, s.state, states.length));
+        });
+
+        return block;
+    }
+
+    function toggleState(nodeId, targetState, count) {
+        const ns = nodeStates[nodeId];
+        const sid = safeId(nodeId);
+
+        if (ns.activeState === targetState) {
+            // Turn off — reset to STATIC (0)
+            ns.activeState = null;
+            setServerState(nodeId, 0);
+            log(`[${nodeId}] Reset to STATIC`);
+        } else {
+            ns.activeState = targetState;
+            setServerState(nodeId, targetState);
+            const names = ['STATIC','MOVEMENT','FALL'];
+            log(`[${nodeId}] Simulating <strong>${names[targetState]}</strong>`);
+        }
+
+        // Update button visuals
+        for (let i = 0; i < count; i++) {
+            const btn = document.getElementById(`btn-${sid}-${i}`);
+            if (!btn) continue;
+            btn.classList.toggle('active', ns.activeState === i);
+        }
+    }
+
+    function setServerState(nodeId, state) {
+        ws.send(JSON.stringify({command: 'simulate_state', node_id: nodeId, state}));
+    }
+
+    // LINE alert with 30s cooldown per node
+    const lineCooldowns = {};
+    function sendLine(nodeId) {
+        const sid = safeId(nodeId);
+        const btn = document.getElementById('line-' + sid);
+        const cd  = document.getElementById('line-cd-' + sid);
+        if (lineCooldowns[nodeId]) return;
+
+        ws.send(JSON.stringify({command: 'test_line_alert', node_id: nodeId}));
+        log(`[${nodeId}] LINE alert sent!`);
+
+        btn.disabled = true;
+        let secs = 30;
+        lineCooldowns[nodeId] = true;
+        const interval = setInterval(() => {
+            secs--;
+            cd.textContent = `Cooldown: ${secs}s`;
+            if (secs <= 0) {
+                clearInterval(interval);
+                btn.disabled = false;
+                cd.textContent = 'Fires real LINE push to caregiver';
+                delete lineCooldowns[nodeId];
+            }
+        }, 1000);
+    }
+
+    function safeId(str) {
+        return str.replace(/[\s\/\[\]]/g, '-').replace(/[^a-zA-Z0-9\-]/g, '');
+    }
+
+    // Periodically refresh node list (new nodes joining after page load)
+    setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({command: 'get_nodes'}));
+        }
+    }, 3000);
+</script>
+</body>
+</html>

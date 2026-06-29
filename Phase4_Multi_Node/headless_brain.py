@@ -132,7 +132,23 @@ class HeadlessBrain:
             async for message in websocket:
                 try:
                     data = json.loads(message)
-                    if data.get("command") == "set_threshold":
+                    if data.get("command") == "simulate_state":
+                        node_id = data.get("node_id")
+                        state   = int(data.get("state", 0))
+                        if node_id and node_id in self.nodes:
+                            self.nodes[node_id].current_state = state
+                            print(f"[DEBUG] Simulated state {state} on {node_id}")
+
+                    elif data.get("command") == "test_line_alert":
+                        node_id = data.get("node_id", "Debug")
+                        print(f"[DEBUG] Triggering LINE alert for {node_id}")
+                        threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
+
+                    elif data.get("command") == "get_nodes":
+                        nodes_list = list(self.nodes.keys())
+                        await websocket.send(json.dumps({"type": "nodes_list", "nodes": nodes_list}))
+
+                    elif data.get("command") == "set_threshold":
                         new_thresh = float(data.get("value", 2.0))
                         node_id = data.get("node_id")
                         if node_id and node_id in self.nodes:
@@ -237,22 +253,25 @@ class HeadlessBrain:
     # --- UNIFIED HTTP & WEBSOCKET SERVER LOGIC ---
     async def process_request(self, path, request_headers):
         import http
+        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
         if path == "/" or path == "/index.html":
-            dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
             index_path = os.path.join(dashboard_dir, 'index.html')
             try:
                 with open(index_path, "rb") as f:
                     content = f.read()
-                return (http.HTTPStatus.OK, [
-                    ("Content-Type", "text/html; charset=utf-8"),
-                    ("Cache-Control", "no-cache, no-store, must-revalidate"),
-                    ("Pragma", "no-cache"),
-                    ("Expires", "0")
-                ], content)
+                return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "no-cache")], content)
+            except Exception as e:
+                return (http.HTTPStatus.INTERNAL_SERVER_ERROR, [], str(e).encode())
+        elif path == "/debug":
+            debug_path = os.path.join(dashboard_dir, 'debug.html')
+            try:
+                with open(debug_path, "rb") as f:
+                    content = f.read()
+                return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "no-cache")], content)
             except Exception as e:
                 return (http.HTTPStatus.INTERNAL_SERVER_ERROR, [], str(e).encode())
         elif path == "/ws":
-            return None # Proceed to WebSocket upgrade
+            return None  # Proceed to WebSocket upgrade
         else:
             return (http.HTTPStatus.NOT_FOUND, [], b"Not Found")
 
