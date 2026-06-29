@@ -281,15 +281,15 @@
         const sid = safeId(nodeId);
 
         if (ns.activeState === targetState) {
-            // Turn off — reset to STATIC (0)
+            // Toggle off — release the server lock
             ns.activeState = null;
-            setServerState(nodeId, 0);
-            log(`[${nodeId}] Reset to STATIC`);
+            ws.send(JSON.stringify({command: 'release_sim', node_id: nodeId}));
+            log(`[${nodeId}] Released — back to real detection`);
         } else {
             ns.activeState = targetState;
-            setServerState(nodeId, targetState);
-            const names = ['STATIC','MOVEMENT','FALL'];
-            log(`[${nodeId}] Simulating <strong>${names[targetState]}</strong>`);
+            ws.send(JSON.stringify({command: 'simulate_state', node_id: nodeId, state: targetState}));
+            const names = ['STATIC', 'MOVEMENT', 'FALL'];
+            log(`[${nodeId}] Locked → <strong>${names[targetState]}</strong>`);
         }
 
         // Update button visuals
@@ -299,6 +299,7 @@
             btn.classList.toggle('active', ns.activeState === i);
         }
     }
+
 
     function setServerState(nodeId, state) {
         ws.send(JSON.stringify({command: 'simulate_state', node_id: nodeId, state}));

@@ -138,20 +138,23 @@ class HeadlessBrain:
                         state   = int(data.get("state", 0))
                         if node_id and node_id in self.nodes:
                             node = self.nodes[node_id]
-                            if state == 0:
-                                # Toggle off — release lock
-                                node.sim_locked = False
-                                node.current_state = 0
-                            else:
-                                node.sim_locked = True
-                                node.current_state = state
-                                if state == 2:
-                                    # FALL: also fire LINE alert (with cooldown)
-                                    now = time.time()
-                                    if now - node.last_line_alert_time > 60.0:
-                                        node.last_line_alert_time = now
-                                        threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
-                            print(f"[DEBUG] Simulated state {state} on {node_id} (locked={node.sim_locked})")
+                            # Always lock — STATIC/MOVEMENT/FALL all hold until release_sim
+                            node.sim_locked = True
+                            node.current_state = state
+                            if state == 2:
+                                # Debug FALL: fire LINE with short 5s cooldown (for testing)
+                                now = time.time()
+                                if now - node.last_line_alert_time > 5.0:
+                                    node.last_line_alert_time = now
+                                    threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
+                            print(f"[DEBUG] Locked state={state} on {node_id}")
+
+                    elif data.get("command") == "release_sim":
+                        node_id = data.get("node_id")
+                        if node_id and node_id in self.nodes:
+                            self.nodes[node_id].sim_locked = False
+                            self.nodes[node_id].current_state = 0
+                            print(f"[DEBUG] Released sim lock on {node_id}")
 
                     elif data.get("command") == "test_line_alert":
                         node_id = data.get("node_id", "Debug")
