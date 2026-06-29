@@ -150,25 +150,6 @@
             letter-spacing: 0.5px;
         }
 
-        /* ── LINE section ── */
-        .line-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .line-btn {
-            background: linear-gradient(45deg, #06c755, #00a041);
-            color: #fff;
-            border: none;
-            padding: 10px 22px;
-            border-radius: 10px;
-            font-weight: 700;
-            font-size: 13px;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 4px 14px rgba(6,199,85,.3);
-        }
-        .line-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(6,199,85,.5); }
-        .line-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .line-cooldown { font-size: 12px; color: var(--muted); }
-
         .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
         .empty-msg {
@@ -269,17 +250,14 @@
         block.id = 'block-' + safeId(nodeId);
 
         const states = [
-            { label: 'STATIC',   cls: 'static-btn', state: 0 },
-            { label: 'MOVEMENT', cls: 'move-btn',   state: 1 },
-            { label: 'FALL',     cls: 'fall-btn',   state: 2 },
+            { label: 'STATIC',              cls: 'static-btn', state: 0 },
+            { label: 'MOVEMENT',            cls: 'move-btn',   state: 1 },
+            { label: 'FALL  +LINE Alert',  cls: 'fall-btn',   state: 2 },
         ];
-
-        const btnIds = states.map(s => `btn-${safeId(nodeId)}-${s.state}`);
 
         block.innerHTML = `
             <div class="node-name">${nodeId}</div>
-
-            <div class="section-label">Simulate State (toggle)</div>
+            <div class="section-label">Simulate State — click to lock, click again to release</div>
             <div class="state-btns">
                 ${states.map(s => `
                 <button class="state-btn ${s.cls}" id="btn-${safeId(nodeId)}-${s.state}"
@@ -287,19 +265,9 @@
                     ${s.label}
                 </button>`).join('')}
             </div>
-
-            <hr class="divider">
-
-            <div class="section-label">LINE Alert Test</div>
-            <div class="line-row">
-                <button class="line-btn" id="line-${safeId(nodeId)}" onclick="sendLine('${nodeId}')">
-                    Send LINE Alert
-                </button>
-                <span class="line-cooldown" id="line-cd-${safeId(nodeId)}">Fires real LINE push to caregiver</span>
-            </div>
         `;
 
-        // Attach toggle logic to state buttons
+        // Attach toggle logic
         states.forEach(s => {
             const btn = block.querySelector(`#btn-${safeId(nodeId)}-${s.state}`);
             btn.addEventListener('click', () => toggleState(nodeId, s.state, states.length));

@@ -42,10 +42,11 @@ class NodeState:
         self._processing = False
         self.potential_fall_time = 0
         self.last_line_alert_time = 0
-        self.current_state = 0 # 0=STATIC, 1=MOVEMENT, 2=FALL
+        self.current_state = 0
         self.last_variance = 0.0
         self.last_seen = time.time()
         self.threshold = THRESHOLD
+        self.sim_locked = False  # When True, CSI inference won't overwrite current_state
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -136,8 +137,21 @@ class HeadlessBrain:
                         node_id = data.get("node_id")
                         state   = int(data.get("state", 0))
                         if node_id and node_id in self.nodes:
-                            self.nodes[node_id].current_state = state
-                            print(f"[DEBUG] Simulated state {state} on {node_id}")
+                            node = self.nodes[node_id]
+                            if state == 0:
+                                # Toggle off — release lock
+                                node.sim_locked = False
+                                node.current_state = 0
+                            else:
+                                node.sim_locked = True
+                                node.current_state = state
+                                if state == 2:
+                                    # FALL: also fire LINE alert (with cooldown)
+                                    now = time.time()
+                                    if now - node.last_line_alert_time > 60.0:
+                                        node.last_line_alert_time = now
+                                        threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
+                            print(f"[DEBUG] Simulated state {state} on {node_id} (locked={node.sim_locked})")
 
                     elif data.get("command") == "test_line_alert":
                         node_id = data.get("node_id", "Debug")
@@ -410,7 +424,8 @@ class HeadlessBrain:
                         if new_state != node.current_state:
                             state_names = {0: "STATIC", 1: "MOVEMENT", 2: "FALL DETECTED"}
                             print(f"[{time.strftime('%H:%M:%S')}] STATE [{location_name}]: {state_names[new_state]} (Var: {current_variance:.2f})")
-                            node.current_state = new_state
+                            if not node.sim_locked:  # Don't overwrite a debug simulation
+                                node.current_state = new_state
         finally:
             node._processing = False
 
