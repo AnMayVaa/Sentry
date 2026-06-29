@@ -174,7 +174,6 @@
         <div class="header-right">
             <span class="ws-dot" id="ws-dot"></span>
             <span class="ws-label" id="ws-label">Connecting...</span>
-            <a class="back-btn" href="/">Main Dashboard</a>
         </div>
     </div>
 
@@ -227,21 +226,22 @@
         }
 
         if (data.type === 'data' && data.nodes) {
-            // Sync realtime state indicators but don't overwrite simulated locks
-            // (We just show what the server broadcasts — it already reflects our simulations)
-            Object.keys(data.nodes).forEach(loc => {
-                if (!nodeStates[loc]) buildNodes(Object.keys(data.nodes));
-            });
+            // Add any NEW nodes that appeared after page load, without rebuilding existing ones
+            const newNodes = Object.keys(data.nodes).filter(loc => !nodeStates[loc]);
+            if (newNodes.length > 0) buildNodes(Object.keys(data.nodes));
         }
     };
 
     function buildNodes(nodeList) {
         if (!nodeList || nodeList.length === 0) return;
-        panel.innerHTML = '';
         nodeList.forEach(nodeId => {
-            if (!nodeStates[nodeId]) nodeStates[nodeId] = { activeState: null, cooldown: false };
+            if (nodeStates[nodeId]) return; // already rendered, keep existing button state
+            nodeStates[nodeId] = { activeState: null };
+            panel.innerHTML = panel.innerHTML.replace(/<div class="empty-msg"[\s\S]*?<\/div>/, '') // remove placeholder
             panel.appendChild(makeNodeBlock(nodeId));
         });
+        // Remove empty-msg placeholder once we have nodes
+        document.querySelector('.empty-msg')?.remove();
     }
 
     function makeNodeBlock(nodeId) {
@@ -250,9 +250,9 @@
         block.id = 'block-' + safeId(nodeId);
 
         const states = [
-            { label: 'STATIC',              cls: 'static-btn', state: 0 },
-            { label: 'MOVEMENT',            cls: 'move-btn',   state: 1 },
-            { label: 'FALL  +LINE Alert',  cls: 'fall-btn',   state: 2 },
+            { label: 'STATIC',   cls: 'static-btn', state: 0 },
+            { label: 'MOVEMENT', cls: 'move-btn',   state: 1 },
+            { label: 'FALL',     cls: 'fall-btn',   state: 2 },
         ];
 
         block.innerHTML = `
@@ -304,31 +304,6 @@
         ws.send(JSON.stringify({command: 'simulate_state', node_id: nodeId, state}));
     }
 
-    // LINE alert with 30s cooldown per node
-    const lineCooldowns = {};
-    function sendLine(nodeId) {
-        const sid = safeId(nodeId);
-        const btn = document.getElementById('line-' + sid);
-        const cd  = document.getElementById('line-cd-' + sid);
-        if (lineCooldowns[nodeId]) return;
-
-        ws.send(JSON.stringify({command: 'test_line_alert', node_id: nodeId}));
-        log(`[${nodeId}] LINE alert sent!`);
-
-        btn.disabled = true;
-        let secs = 30;
-        lineCooldowns[nodeId] = true;
-        const interval = setInterval(() => {
-            secs--;
-            cd.textContent = `Cooldown: ${secs}s`;
-            if (secs <= 0) {
-                clearInterval(interval);
-                btn.disabled = false;
-                cd.textContent = 'Fires real LINE push to caregiver';
-                delete lineCooldowns[nodeId];
-            }
-        }, 1000);
-    }
 
     function safeId(str) {
         return str.replace(/[\s\/\[\]]/g, '-').replace(/[^a-zA-Z0-9\-]/g, '');

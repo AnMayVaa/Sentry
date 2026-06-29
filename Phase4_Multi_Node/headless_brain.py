@@ -383,13 +383,15 @@ class HeadlessBrain:
         try:
             node.history.append(amplitudes)
             node.frame_count += 1
-            
+
+            # Debug simulation is active — keep graph data fresh but skip all inference
+            if node.sim_locked:
+                return
+
             current_variance = node.last_variance
             
             if len(node.history) >= 45:
-                # Run ML inference every 2nd frame (15Hz) — plenty for fall detection
                 if node.frame_count % 2 == 0:
-                    # Direct numpy — no pandas DataFrame overhead!
                     hist_arr = np.array(node.history)
                     features = extract_features_np(hist_arr)
                     
@@ -398,7 +400,7 @@ class HeadlessBrain:
                         current_variance = float(features[0])
                         node.last_variance = current_variance
                         
-                        # --- SENSITIVITY OVERRIDE (GATEKEEPER) ---
+                        # SENSITIVITY GATEKEEPER
                         if current_variance < node.threshold:
                             raw_pred = 0
                         elif current_variance >= node.threshold and raw_pred == 0:
@@ -411,21 +413,21 @@ class HeadlessBrain:
                         if mode_pred == 2:
                             node.potential_fall_time = current_time
                             
+                        new_state = 1 if mode_pred == 2 else mode_pred
                         if (current_time - node.potential_fall_time < 3.0) and mode_pred == 0:
-                            if current_time - node.last_line_alert_time > 60.0:
-                                print(f"\n[{time.strftime('%H:%M:%S')}] FALL DETECTED IN {location_name}!")
-                                threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
-                                node.last_line_alert_time = current_time
-                        
-                        new_state = 1 if mode_pred == 2 else mode_pred 
+                            new_state = 2
                         if current_time - node.last_line_alert_time < 3.0:
-                            new_state = 2 
-                            
+                            new_state = 2
+
                         if new_state != node.current_state:
                             state_names = {0: "STATIC", 1: "MOVEMENT", 2: "FALL DETECTED"}
                             print(f"[{time.strftime('%H:%M:%S')}] STATE [{location_name}]: {state_names[new_state]} (Var: {current_variance:.2f})")
-                            if not node.sim_locked:  # Don't overwrite a debug simulation
-                                node.current_state = new_state
+                            node.current_state = new_state
+                            # Fire LINE whenever state transitions to FALL
+                            if new_state == 2 and current_time - node.last_line_alert_time > 60.0:
+                                node.last_line_alert_time = current_time
+                                print(f"[{time.strftime('%H:%M:%S')}] FALL DETECTED IN {location_name}!")
+                                threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
         finally:
             node._processing = False
 
