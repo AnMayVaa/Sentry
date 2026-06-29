@@ -2,6 +2,7 @@ import requests
 import json
 import datetime
 import os
+import sys
 
 # Load config from root directory
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
@@ -16,8 +17,9 @@ except Exception as e:
     LINE_USER_ID = "YOUR_USER_ID"
 
 def send_fall_alert(location_name="Unknown Location"):
+    print(f"[LINE_NOTIFIER] Attempting to send alert for {location_name}...", flush=True)
     if LINE_CHANNEL_ACCESS_TOKEN == "YOUR_CHANNEL_ACCESS_TOKEN":
-        print("LINE Alert Disabled: Please configure your tokens in line_notifier.py")
+        print("[LINE_NOTIFIER] LINE Alert Disabled: Please configure your tokens in line_notifier.py", flush=True)
         return False
         
     url = "https://api.line.me/v2/bot/message/push"
@@ -129,13 +131,13 @@ def send_fall_alert(location_name="Unknown Location"):
     try:
         response = requests.post(url, headers=headers, data=json.dumps(payload))
         if response.status_code == 200:
-            print("Successfully sent LINE Flex Message!")
+            print("[LINE_NOTIFIER] Successfully sent LINE Flex Message!", flush=True)
             return True
         else:
-            print(f"Failed to send LINE message: {response.status_code} - {response.text}")
+            print(f"[LINE_NOTIFIER] Failed to send LINE message: {response.status_code} - {response.text}", flush=True)
             return False
     except Exception as e:
-        print(f"Error connecting to LINE API: {e}")
+        print(f"[LINE_NOTIFIER] Error connecting to LINE API: {e}", flush=True)
         return False
 
 # For manual testing

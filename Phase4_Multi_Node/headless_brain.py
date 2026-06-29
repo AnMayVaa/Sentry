@@ -387,10 +387,6 @@ class HeadlessBrain:
             node.history.append(amplitudes)
             node.frame_count += 1
 
-            # Debug simulation is active — keep graph data fresh but skip all inference
-            if node.sim_locked:
-                return
-
             current_variance = node.last_variance
             
             if len(node.history) >= 45:
@@ -423,14 +419,18 @@ class HeadlessBrain:
                             new_state = 2
 
                         if new_state != node.current_state:
-                            state_names = {0: "STATIC", 1: "MOVEMENT", 2: "FALL DETECTED"}
-                            print(f"[{time.strftime('%H:%M:%S')}] STATE [{location_name}]: {state_names[new_state]} (Var: {current_variance:.2f})")
-                            node.current_state = new_state
-                            # Fire LINE whenever state transitions to FALL
-                            if new_state == 2 and current_time - node.last_line_alert_time > 60.0:
-                                node.last_line_alert_time = current_time
-                                print(f"[{time.strftime('%H:%M:%S')}] FALL DETECTED IN {location_name}!")
-                                threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
+                            if not node.sim_locked:
+                                state_names = {0: "STATIC", 1: "MOVEMENT", 2: "FALL DETECTED"}
+                                print(f"[{time.strftime('%H:%M:%S')}] STATE [{location_name}]: {state_names[new_state]} (Var: {current_variance:.2f})")
+                                node.current_state = new_state
+                                # Fire LINE whenever state transitions to FALL
+                                if new_state == 2 and current_time - node.last_line_alert_time > 60.0:
+                                    node.last_line_alert_time = current_time
+                                    print(f"[{time.strftime('%H:%M:%S')}] FALL DETECTED IN {location_name}!")
+                                    threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
+                            else:
+                                # Keep graph updated in debug mode, just don't change state
+                                pass
         finally:
             node._processing = False
 
