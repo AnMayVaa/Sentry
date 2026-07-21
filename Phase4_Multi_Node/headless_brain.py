@@ -48,6 +48,7 @@ class NodeState:
         self.threshold = THRESHOLD
         self.sim_locked = False  # When True, CSI inference won't overwrite current_state
         self.sim_start_time = 0.0
+        self.sim_target_state = 0
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -141,15 +142,16 @@ class HeadlessBrain:
                             node = self.nodes[node_id]
                             # Always lock — STATIC/MOVEMENT/FALL all hold until release_sim
                             node.sim_locked = True
-                            node.current_state = state
+                            node.sim_target_state = state
                             node.sim_start_time = time.time()
+                            
                             if state == 2:
-                                # Debug FALL: fire LINE with short 5s cooldown (for testing)
-                                now = time.time()
-                                if now - node.last_line_alert_time > 5.0:
-                                    node.last_line_alert_time = now
-                                    threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
-                            print(f"[DEBUG] Locked state={state} on {node_id}")
+                                # For Fall, we start in MOVEMENT state to mimic physics (spike first)
+                                node.current_state = 1
+                            else:
+                                node.current_state = state
+                                
+                            print(f"[DEBUG] Locked target state={state} on {node_id}")
 
                     elif data.get("command") == "release_sim":
                         node_id = data.get("node_id")
@@ -314,13 +316,13 @@ class HeadlessBrain:
                     if node.sim_locked:
                         node.last_seen = current_time # Keep alive
                         elapsed = current_time - node.sim_start_time
-                        if node.current_state == 0:
+                        if node.sim_target_state == 0:
                             # Static: variance under threshold + jitter
                             node.last_variance = max(0.0, (node.threshold * 0.4) + random.uniform(-0.3, 0.3))
-                        elif node.current_state == 1:
+                        elif node.sim_target_state == 1:
                             # Movement: variance above threshold + jitter
                             node.last_variance = (node.threshold * 1.5) + random.uniform(-0.5, 2.0)
-                        elif node.current_state == 2:
+                        elif node.sim_target_state == 2:
                             # Fall: go above > peak > below
                             if elapsed < 0.8:
                                 node.last_variance = (node.threshold * 3.5) + random.uniform(-1.0, 1.0)
@@ -328,6 +330,13 @@ class HeadlessBrain:
                                 node.last_variance = (node.threshold * 1.2) + random.uniform(-0.5, 0.5)
                             else:
                                 node.last_variance = max(0.0, (node.threshold * 0.2) + random.uniform(-0.2, 0.2))
+                                
+                                # Transition to actual FALL DETECTED once it drops below threshold
+                                if node.current_state != 2:
+                                    node.current_state = 2
+                                    if current_time - node.last_line_alert_time > 5.0:
+                                        node.last_line_alert_time = current_time
+                                        threading.Thread(target=send_fall_alert, args=(loc,), daemon=True).start()
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
