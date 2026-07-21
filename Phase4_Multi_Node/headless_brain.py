@@ -319,40 +319,33 @@ class HeadlessBrain:
                         node.last_seen = current_time # Keep alive
                         elapsed = current_time - node.sim_start_time
                         
-                        # Generate smooth pseudo-random noise using incommensurate frequencies
-                        t = current_time
-                        noise_slow = (math.sin(t * 1.3) + math.sin(t * 2.7) + math.sin(t * 4.1)) / 3.0
-                        noise_fast = (math.sin(t * 3.1) + math.sin(t * 5.7) + math.sin(t * 8.3)) / 3.0
-                        jitter = random.uniform(-0.05, 0.05)
+                        smooth_wave = math.sin(current_time * 4.0) * 0.15
+                        slow_wave = math.sin(current_time * 1.5) * 0.8
                         
                         if node.sim_target_state == 0:
-                            # Static: Low baseline, slow wander
+                            # Static: smooth small waves + micro jitter
                             node.current_state = 0
-                            target = (node.threshold * 0.3) + (noise_slow * node.threshold * 0.2) + jitter
-                            node.last_variance = max(0.0, target)
+                            node.last_variance = max(0.0, (node.threshold * 0.4) + smooth_wave + random.uniform(-0.1, 0.1))
                         elif node.sim_target_state == 1:
-                            # Movement: High baseline, chaotic smooth wander
+                            # Movement: smooth large waves + medium jitter
                             node.current_state = 1
-                            target = (node.threshold * 1.8) + (noise_fast * node.threshold * 0.8) + jitter
+                            target = (node.threshold * 1.5) + slow_wave + random.uniform(-0.4, 0.4)
                             node.last_variance = max(node.threshold + 0.1, target)
                         elif node.sim_target_state == 2:
-                            # Fall: realistic peak and drop with organic noise
+                            # Fall: realistic peak and drop + high jitter on impact
                             if elapsed < 0.8:
                                 node.current_state = 1 # MOVEMENT while peaking
                                 progress = elapsed / 0.8
-                                target = (node.threshold * 4.0) * math.sin(progress * (math.pi / 2))
-                                target += noise_fast * (node.threshold * 0.5)
+                                target = (node.threshold * 4.0) * math.sin(progress * (math.pi / 2)) + random.uniform(-0.6, 0.6)
                                 node.last_variance = max(0.0, target)
                             elif elapsed < 1.5:
                                 node.current_state = 1 # MOVEMENT while dropping
                                 progress = (elapsed - 0.8) / 0.7
-                                target = (node.threshold * 4.0) * math.cos(progress * (math.pi / 2))
-                                target += noise_slow * (node.threshold * 0.3)
+                                target = (node.threshold * 4.0) * math.cos(progress * (math.pi / 2)) + random.uniform(-0.3, 0.3)
                                 node.last_variance = max(0.0, target)
                             else:
                                 node.current_state = 2 # FALL DETECTED
-                                target = (node.threshold * 0.2) + (noise_slow * node.threshold * 0.1) + jitter
-                                node.last_variance = max(0.0, target)
+                                node.last_variance = max(0.0, (node.threshold * 0.2) + smooth_wave + random.uniform(-0.1, 0.1))
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
