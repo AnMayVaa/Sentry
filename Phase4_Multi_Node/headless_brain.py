@@ -37,18 +37,19 @@ HTTP_PORT = global_config["networking"]["http_port"]
 class NodeState:
     def __init__(self):
         self.history = deque(maxlen=45)
+        self.raw_buffer = deque(maxlen=3) # Median filter buffer
         self.prediction_history = deque(maxlen=15)
         self.frame_count = 0
         self._processing = False
         self.potential_fall_time = 0
         self.last_line_alert_time = 0
         self.current_state = 0
+        self.sim_target_state = 0
         self.last_variance = 0.0
         self.last_seen = time.time()
         self.threshold = THRESHOLD
         self.sim_locked = False  # When True, CSI inference won't overwrite current_state
         self.sim_start_time = 0.0
-        self.sim_target_state = 0
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -144,20 +145,20 @@ class HeadlessBrain:
                             node.sim_locked = True
                             node.sim_target_state = state
                             node.sim_start_time = time.time()
-                            
                             if state == 2:
-                                # For Fall, we start in MOVEMENT state to mimic physics (spike first)
-                                node.current_state = 1
-                            else:
-                                node.current_state = state
-                                
-                            print(f"[DEBUG] Locked target state={state} on {node_id}")
+                                # Debug FALL: fire LINE with short 5s cooldown (for testing)
+                                now = time.time()
+                                if now - node.last_line_alert_time > 5.0:
+                                    node.last_line_alert_time = now
+                                    threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
+                            print(f"[DEBUG] Locked state={state} on {node_id}")
 
                     elif data.get("command") == "release_sim":
                         node_id = data.get("node_id")
                         if node_id and node_id in self.nodes:
                             self.nodes[node_id].sim_locked = False
                             self.nodes[node_id].current_state = 0
+                            self.nodes[node_id].sim_target_state = 0
                             print(f"[DEBUG] Released sim lock on {node_id}")
 
                     elif data.get("command") == "test_line_alert":
@@ -318,25 +319,23 @@ class HeadlessBrain:
                         elapsed = current_time - node.sim_start_time
                         if node.sim_target_state == 0:
                             # Static: variance under threshold + jitter
+                            node.current_state = 0
                             node.last_variance = max(0.0, (node.threshold * 0.4) + random.uniform(-0.3, 0.3))
                         elif node.sim_target_state == 1:
                             # Movement: variance above threshold + jitter
+                            node.current_state = 1
                             node.last_variance = (node.threshold * 1.5) + random.uniform(-0.5, 2.0)
                         elif node.sim_target_state == 2:
                             # Fall: go above > peak > below
                             if elapsed < 0.8:
+                                node.current_state = 1 # MOVEMENT while peaking
                                 node.last_variance = (node.threshold * 3.5) + random.uniform(-1.0, 1.0)
                             elif elapsed < 1.5:
+                                node.current_state = 1 # MOVEMENT while dropping
                                 node.last_variance = (node.threshold * 1.2) + random.uniform(-0.5, 0.5)
                             else:
+                                node.current_state = 2 # FALL DETECTED exactly when it hits below threshold
                                 node.last_variance = max(0.0, (node.threshold * 0.2) + random.uniform(-0.2, 0.2))
-                                
-                                # Transition to actual FALL DETECTED once it drops below threshold
-                                if node.current_state != 2:
-                                    node.current_state = 2
-                                    if current_time - node.last_line_alert_time > 5.0:
-                                        node.last_line_alert_time = current_time
-                                        threading.Thread(target=send_fall_alert, args=(loc,), daemon=True).start()
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
@@ -414,7 +413,14 @@ class HeadlessBrain:
         node._processing = True
         
         try:
-            node.history.append(amplitudes)
+            # Temporal Median Filter (rejects 1-frame router glitches)
+            node.raw_buffer.append(amplitudes)
+            if len(node.raw_buffer) == 3:
+                filtered_amplitudes = np.median(node.raw_buffer, axis=0).tolist()
+            else:
+                filtered_amplitudes = amplitudes
+                
+            node.history.append(filtered_amplitudes)
             node.frame_count += 1
 
             current_variance = node.last_variance
