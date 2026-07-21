@@ -312,30 +312,40 @@ class HeadlessBrain:
             # 2. Build payload of ALL active nodes
             if self.connected_clients:
                 import random
+                import math
                 payload = {"type": "data", "nodes": {}}
                 for loc, node in self.nodes.items():
                     if node.sim_locked:
                         node.last_seen = current_time # Keep alive
                         elapsed = current_time - node.sim_start_time
+                        
+                        smooth_wave = math.sin(current_time * 4.0) * 0.15
+                        slow_wave = math.sin(current_time * 1.5) * 0.8
+                        
                         if node.sim_target_state == 0:
-                            # Static: variance under threshold + jitter
+                            # Static: smooth small waves
                             node.current_state = 0
-                            node.last_variance = max(0.0, (node.threshold * 0.4) + random.uniform(-0.3, 0.3))
+                            node.last_variance = max(0.0, (node.threshold * 0.4) + smooth_wave)
                         elif node.sim_target_state == 1:
-                            # Movement: variance above threshold + jitter
+                            # Movement: smooth large waves
                             node.current_state = 1
-                            node.last_variance = (node.threshold * 1.5) + random.uniform(-0.5, 2.0)
+                            target = (node.threshold * 1.5) + slow_wave + random.uniform(-0.05, 0.05)
+                            node.last_variance = max(node.threshold + 0.1, target)
                         elif node.sim_target_state == 2:
-                            # Fall: go above > peak > below
+                            # Fall: realistic smooth peak and drop
                             if elapsed < 0.8:
                                 node.current_state = 1 # MOVEMENT while peaking
-                                node.last_variance = (node.threshold * 3.5) + random.uniform(-1.0, 1.0)
+                                progress = elapsed / 0.8
+                                target = (node.threshold * 4.0) * math.sin(progress * (math.pi / 2))
+                                node.last_variance = max(0.0, target)
                             elif elapsed < 1.5:
                                 node.current_state = 1 # MOVEMENT while dropping
-                                node.last_variance = (node.threshold * 1.2) + random.uniform(-0.5, 0.5)
+                                progress = (elapsed - 0.8) / 0.7
+                                target = (node.threshold * 4.0) * math.cos(progress * (math.pi / 2))
+                                node.last_variance = max(0.0, target)
                             else:
-                                node.current_state = 2 # FALL DETECTED exactly when it hits below threshold
-                                node.last_variance = max(0.0, (node.threshold * 0.2) + random.uniform(-0.2, 0.2))
+                                node.current_state = 2 # FALL DETECTED
+                                node.last_variance = max(0.0, (node.threshold * 0.2) + smooth_wave)
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
