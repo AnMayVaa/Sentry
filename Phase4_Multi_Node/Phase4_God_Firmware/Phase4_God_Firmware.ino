@@ -8,7 +8,7 @@ const char* ssid = "BUNDAOBUNTAI";
 const char* password = "ohm12345";
 const char* dest_host = "OhmPatumwan"; // Hostname of the Raspberry Pi
 const int dest_port = 5000;
-String node_location = "Bath Room"; // Change this before uploading to each node!
+String node_location = "Living Room"; // Change this before uploading to each node!
 
 WiFiUDP udp;
 IPAddress target_ip;

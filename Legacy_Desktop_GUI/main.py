@@ -1,15 +1,16 @@
-﻿import sys
+import sys
 import locale
 locale.setlocale(locale.LC_ALL, 'C') # Force English numerals
 
 print("Starting main.py")
 try:
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QComboBox, QLabel, QGroupBox
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QComboBox, QLabel, QGroupBox, QCheckBox
     from PyQt6.QtCore import QTimer
     import pyqtgraph as pg
     import numpy as np
     import serial.tools.list_ports
     from serial_reader import SerialReader
+    from udp_reader import UDPReader
     print("Imported everything")
 except Exception as e:
     print(f"Import error: {e}")
@@ -24,12 +25,7 @@ class CSIVisualizerApp(QMainWindow):
         self.reader = None
         self.latest_data = None
         self.ml_model = None
-        try:
-            import joblib
-            self.ml_model = joblib.load("fall_detection_model.pkl")
-            print("Loaded Fall Detection ML model!")
-        except Exception as e:
-            print(f"Could not load ML model (fallback to heuristic): {e}")
+        self.line_alerts_enabled = True
             
         self.prediction_history = []
         self.fall_latch_time = 0
@@ -60,8 +56,17 @@ class CSIVisualizerApp(QMainWindow):
         conn_group.setStyleSheet("QGroupBox { font-weight: bold; }")
         conn_layout = QVBoxLayout()
         
+        type_row = QHBoxLayout()
+        type_row.addWidget(QLabel("Type:"))
+        self.type_combo = QComboBox()
+        self.type_combo.addItems(["Serial (COM)", "UDP (Wi-Fi)"])
+        self.type_combo.currentTextChanged.connect(self.on_type_changed)
+        type_row.addWidget(self.type_combo)
+        conn_layout.addLayout(type_row)
+        
         port_row = QHBoxLayout()
-        port_row.addWidget(QLabel("COM Port:"))
+        self.lbl_port = QLabel("COM Port:")
+        port_row.addWidget(self.lbl_port)
         self.port_combo = QComboBox()
         self.refresh_ports()
         port_row.addWidget(self.port_combo)
@@ -137,8 +142,35 @@ class CSIVisualizerApp(QMainWindow):
         guide_label.setStyleSheet("background-color: #f1f2f6; padding: 10px; border-radius: 5px; margin-top: 10px;")
         left_panel.addWidget(guide_label)
         
+        # 4. Settings & Models Group
+        settings_group = QGroupBox("4. Settings & Models")
+        settings_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        settings_layout = QVBoxLayout()
+        
+        self.chk_line = QCheckBox("Enable LINE Alerts")
+        self.chk_line.setChecked(True)
+        self.chk_line.stateChanged.connect(self.toggle_line_alerts)
+        settings_layout.addWidget(self.chk_line)
+        
+        model_row = QHBoxLayout()
+        model_row.addWidget(QLabel("Model:"))
+        self.model_combo = QComboBox()
+        self.model_combo.currentTextChanged.connect(self.load_selected_model)
+        model_row.addWidget(self.model_combo)
+        
+        self.btn_refresh_models = QPushButton("Refresh")
+        self.btn_refresh_models.clicked.connect(self.refresh_models)
+        model_row.addWidget(self.btn_refresh_models)
+        
+        settings_layout.addLayout(model_row)
+        settings_group.setLayout(settings_layout)
+        left_panel.addWidget(settings_group)
+        
         left_panel.addStretch()
         main_layout.addLayout(left_panel, 1) # 1 part width for controls
+        
+        # Populate models at startup
+        self.refresh_models()
         
         # --- RIGHT PANEL: PLOTS ---
         plot_layout = QVBoxLayout()
@@ -169,6 +201,38 @@ class CSIVisualizerApp(QMainWindow):
         if hasattr(self, 'thresh_line'):
             self.thresh_line.setValue(value)
 
+    def toggle_line_alerts(self, state):
+        self.line_alerts_enabled = (state == 2)
+
+    def refresh_models(self):
+        import os
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        if not os.path.exists("models"):
+            os.makedirs("models", exist_ok=True)
+            
+        pkl_files = [f for f in os.listdir("models") if f.endswith(".pkl")]
+        if pkl_files:
+            self.model_combo.addItems(pkl_files)
+            self.model_combo.blockSignals(False)
+            self.load_selected_model(self.model_combo.currentText())
+        else:
+            self.model_combo.addItem("No models found")
+            self.ml_model = None
+            self.model_combo.blockSignals(False)
+            
+    def load_selected_model(self, model_name):
+        import joblib
+        import os
+        if model_name and model_name != "No models found":
+            try:
+                path = os.path.join("models", model_name)
+                self.ml_model = joblib.load(path)
+                print(f"Loaded ML model: {model_name}")
+            except Exception as e:
+                print(f"Could not load ML model: {e}")
+                self.ml_model = None
+
     def refresh_ports(self):
         self.port_combo.clear()
         ports = serial.tools.list_ports.comports()
@@ -185,14 +249,15 @@ class CSIVisualizerApp(QMainWindow):
             self.lbl_movement.setStyleSheet("color: red; font-size: 32px; font-weight: bold;")
             
             # Trigger LINE Alert for SOS
-            current_time = time.time()
-            if not hasattr(self, 'last_line_alert_time'):
-                self.last_line_alert_time = 0
-            if current_time - self.last_line_alert_time > 60.0:
-                import threading
-                from line_notifier import send_fall_alert
-                threading.Thread(target=send_fall_alert, daemon=True).start()
-                self.last_line_alert_time = current_time
+            if getattr(self, 'line_alerts_enabled', True):
+                current_time = time.time()
+                if not hasattr(self, 'last_line_alert_time'):
+                    self.last_line_alert_time = 0
+                if current_time - self.last_line_alert_time > 60.0:
+                    import threading
+                    from line_notifier import send_fall_alert
+                    threading.Thread(target=send_fall_alert, daemon=True).start()
+                    self.last_line_alert_time = current_time
             return
 
         # Callback from SerialReader thread
@@ -247,16 +312,17 @@ class CSIVisualizerApp(QMainWindow):
                         self.fall_latch_time = current_time # CONFIRMED FALL!
                         
                         # --- PHASE 3: LINE NOTIFICATION ---
-                        if not hasattr(self, 'last_line_alert_time'):
-                            self.last_line_alert_time = 0
-                            
-                        # 60 second cooldown to prevent API spam
-                        if current_time - self.last_line_alert_time > 60.0:
-                            import threading
-                            from line_notifier import send_fall_alert
-                            # Run in a background thread so it doesn't freeze the UI!
-                            threading.Thread(target=send_fall_alert, daemon=True).start()
-                            self.last_line_alert_time = current_time
+                        if getattr(self, 'line_alerts_enabled', True):
+                            if not hasattr(self, 'last_line_alert_time'):
+                                self.last_line_alert_time = 0
+                                
+                            # 60 second cooldown to prevent API spam
+                            if current_time - self.last_line_alert_time > 60.0:
+                                import threading
+                                from line_notifier import send_fall_alert
+                                # Run in a background thread so it doesn't freeze the UI!
+                                threading.Thread(target=send_fall_alert, daemon=True).start()
+                                self.last_line_alert_time = current_time
                         
                 # UI Latching: Keep the FALL alert on screen for 3 seconds
                 if time.time() - self.fall_latch_time < 3.0:
@@ -307,6 +373,12 @@ class CSIVisualizerApp(QMainWindow):
                 self.lbl_movement.setText("STATIC")
                 self.lbl_movement.setStyleSheet("background-color: green; color: white; font-size: 20px; font-weight: bold; padding: 5px;")
 
+    def on_type_changed(self, text):
+        is_serial = (text == "Serial (COM)")
+        self.lbl_port.setEnabled(is_serial)
+        self.port_combo.setEnabled(is_serial)
+        self.btn_refresh.setEnabled(is_serial)
+
     def toggle_connection(self):
         if self.reader and self.reader.running:
             if self.is_recording:
@@ -316,14 +388,20 @@ class CSIVisualizerApp(QMainWindow):
             self.lbl_status.setText("Disconnected")
             self.btn_record.setEnabled(False)
         else:
-            port = self.port_combo.currentText()
-            if not port:
-                return
-            
-            self.reader = SerialReader(port, 460800, self.data_received)
+            conn_type = self.type_combo.currentText()
+            if conn_type == "Serial (COM)":
+                port = self.port_combo.currentText()
+                if not port:
+                    return
+                self.reader = SerialReader(port, 460800, self.data_received)
+                status_text = f"Connected to {port}"
+            else:
+                self.reader = UDPReader(5000, self.data_received)
+                status_text = "Listening on UDP 5000"
+                
             if self.reader.connect():
                 self.btn_connect.setText("Disconnect")
-                self.lbl_status.setText(f"Connected to {port}")
+                self.lbl_status.setText(status_text)
                 self.btn_record.setEnabled(True)
             else:
                 self.lbl_status.setText("Connection Failed")

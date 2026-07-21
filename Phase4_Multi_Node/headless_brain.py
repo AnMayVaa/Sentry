@@ -47,6 +47,7 @@ class NodeState:
         self.last_seen = time.time()
         self.threshold = THRESHOLD
         self.sim_locked = False  # When True, CSI inference won't overwrite current_state
+        self.sim_start_time = 0.0
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -141,6 +142,7 @@ class HeadlessBrain:
                             # Always lock — STATIC/MOVEMENT/FALL all hold until release_sim
                             node.sim_locked = True
                             node.current_state = state
+                            node.sim_start_time = time.time()
                             if state == 2:
                                 # Debug FALL: fire LINE with short 5s cooldown (for testing)
                                 now = time.time()
@@ -299,15 +301,34 @@ class HeadlessBrain:
             current_time = time.time()
             
             # 1. Clean up stale nodes (no data for 5 seconds)
-            stale_nodes = [loc for loc, node in self.nodes.items() if current_time - node.last_seen > 5.0]
+            stale_nodes = [loc for loc, node in self.nodes.items() if current_time - node.last_seen > 5.0 and not node.sim_locked]
             for loc in stale_nodes:
                 print(f"[IOT] Node disconnected/timed out: {loc}")
                 del self.nodes[loc]
                 
             # 2. Build payload of ALL active nodes
             if self.connected_clients:
+                import random
                 payload = {"type": "data", "nodes": {}}
                 for loc, node in self.nodes.items():
+                    if node.sim_locked:
+                        node.last_seen = current_time # Keep alive
+                        elapsed = current_time - node.sim_start_time
+                        if node.current_state == 0:
+                            # Static: variance under threshold + jitter
+                            node.last_variance = max(0.0, (node.threshold * 0.4) + random.uniform(-0.3, 0.3))
+                        elif node.current_state == 1:
+                            # Movement: variance above threshold + jitter
+                            node.last_variance = (node.threshold * 1.5) + random.uniform(-0.5, 2.0)
+                        elif node.current_state == 2:
+                            # Fall: go above > peak > below
+                            if elapsed < 0.8:
+                                node.last_variance = (node.threshold * 3.5) + random.uniform(-1.0, 1.0)
+                            elif elapsed < 1.5:
+                                node.last_variance = (node.threshold * 1.2) + random.uniform(-0.5, 0.5)
+                            else:
+                                node.last_variance = max(0.0, (node.threshold * 0.2) + random.uniform(-0.2, 0.2))
+                                
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
                     if isinstance(amps, str):
