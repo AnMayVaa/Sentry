@@ -48,8 +48,9 @@ class NodeState:
         self.last_variance = 0.0
         self.last_seen = time.time()
         self.threshold = THRESHOLD
-        self.sim_locked = False  # When True, CSI inference won't overwrite current_state
+        self.sim_locked = False
         self.sim_start_time = 0.0
+        self.sim_noise = 0.0  # Smoothed noise accumulator — prevents shark-tooth spikes
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -145,6 +146,15 @@ class HeadlessBrain:
                             node.sim_locked = True
                             node.sim_target_state = state
                             node.sim_start_time = time.time()
+                            node.sim_noise = 0.0
+                            T = node.threshold
+                            # Snap variance immediately into correct zone on click
+                            if state == 0:
+                                node.last_variance = T * 0.35
+                            elif state == 1:
+                                node.last_variance = T * 1.6
+                            elif state == 2:
+                                node.last_variance = T * 1.6
                             if state == 2:
                                 # Debug FALL: fire LINE with short 5s cooldown (for testing)
                                 now = time.time()
@@ -319,42 +329,53 @@ class HeadlessBrain:
                         node.last_seen = current_time # Keep alive
                         T = node.threshold
                         elapsed = current_time - node.sim_start_time
+                        import random, math
+
+                        # Slowly drift the noise — this prevents shark-tooth spikes
+                        node.sim_noise += (random.gauss(0, 1) - node.sim_noise) * 0.08
 
                         if node.sim_target_state == 0:
-                            # STATIC: hard ceiling at 85% of threshold
+                            # STATIC: sits at ~35% of threshold, small smooth undulations
                             node.current_state = 0
-                            base = T * 0.35
-                            wave = math.sin(current_time * 3.0) * (T * 0.06)
-                            jitter = random.gauss(0, T * 0.03)
-                            raw = min(base + wave + jitter, T * 0.85)  # HARD ceiling
-                            node.last_variance += (max(0.0, raw) - node.last_variance) * 0.12
+                            base  = T * 0.35
+                            wave  = math.sin(current_time * 1.8) * (T * 0.04)
+                            noise = node.sim_noise * (T * 0.025)
+                            raw   = min(base + wave + noise, T * 0.88)   # hard ceiling
+                            node.last_variance += (max(0.0, raw) - node.last_variance) * 0.10
 
                         elif node.sim_target_state == 1:
-                            # MOVEMENT: hard floor at 110% of threshold
+                            # MOVEMENT: sits at ~160% of threshold, breathing waves
                             node.current_state = 1
-                            base = T * 1.6
-                            wave = math.sin(current_time * 2.0) * (T * 0.25)
-                            jitter = random.gauss(0, T * 0.12)
-                            raw = max(base + wave + jitter, T * 1.1)  # HARD floor
-                            node.last_variance += (raw - node.last_variance) * 0.12
+                            base  = T * 1.6
+                            wave  = math.sin(current_time * 1.2) * (T * 0.18)
+                            noise = node.sim_noise * (T * 0.07)
+                            raw   = max(base + wave + noise, T * 1.08)   # hard floor
+                            node.last_variance += (raw - node.last_variance) * 0.10
 
                         elif node.sim_target_state == 2:
-                            # FALL: peak -> drop -> settle below threshold
+                            # FALL: rise 1s → drop 1s → settle below threshold
                             if elapsed < 1.0:
-                                node.current_state = 1  # MOVEMENT while rising
+                                node.current_state = 1  # still MOVEMENT during rise
                                 progress = elapsed / 1.0
-                                raw = (T * 2.2) * math.sin(progress * (math.pi / 2)) + random.gauss(0, T * 0.08)
+                                peak  = T * 1.8
+                                noise = node.sim_noise * (T * 0.05)
+                                raw   = peak * math.sin(progress * math.pi / 2) + noise
                                 node.last_variance = max(0.0, raw)
                             elif elapsed < 2.0:
-                                node.current_state = 1  # MOVEMENT while falling
+                                node.current_state = 1  # still MOVEMENT during drop
                                 progress = (elapsed - 1.0) / 1.0
-                                raw = (T * 2.2) * math.cos(progress * (math.pi / 2)) + random.gauss(0, T * 0.06)
+                                peak  = T * 1.8
+                                noise = node.sim_noise * (T * 0.04)
+                                raw   = peak * math.cos(progress * math.pi / 2) + noise
                                 node.last_variance = max(0.0, raw)
                             else:
-                                node.current_state = 2  # FALL DETECTED - settled below
-                                wave = math.sin(current_time * 3.0) * (T * 0.06)
-                                raw = min((T * 0.25) + wave + random.gauss(0, T * 0.03), T * 0.85)
-                                node.last_variance += (max(0.0, raw) - node.last_variance) * 0.12
+                                # Settled — FALL DETECTED, quiet below threshold
+                                node.current_state = 2
+                                base  = T * 0.25
+                                wave  = math.sin(current_time * 1.8) * (T * 0.04)
+                                noise = node.sim_noise * (T * 0.025)
+                                raw   = min(base + wave + noise, T * 0.88)   # hard ceiling
+                                node.last_variance += (max(0.0, raw) - node.last_variance) * 0.10
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
