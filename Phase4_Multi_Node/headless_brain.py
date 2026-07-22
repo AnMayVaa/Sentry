@@ -317,37 +317,44 @@ class HeadlessBrain:
                 for loc, node in self.nodes.items():
                     if node.sim_locked:
                         node.last_seen = current_time # Keep alive
+                        T = node.threshold
                         elapsed = current_time - node.sim_start_time
-                        
-                        smooth_wave = math.sin(current_time * 4.0) * (node.threshold * 0.08)
-                        slow_wave = math.sin(current_time * 1.5) * (node.threshold * 0.3)
-                        
+
                         if node.sim_target_state == 0:
-                            # Static: smooth small waves + micro jitter
+                            # STATIC: hard ceiling at 85% of threshold
                             node.current_state = 0
-                            target = (node.threshold * 0.4) + smooth_wave + random.uniform(-0.05 * node.threshold, 0.05 * node.threshold)
-                            node.last_variance += (max(0.0, target) - node.last_variance) * 0.15
+                            base = T * 0.35
+                            wave = math.sin(current_time * 3.0) * (T * 0.06)
+                            jitter = random.gauss(0, T * 0.03)
+                            raw = min(base + wave + jitter, T * 0.85)  # HARD ceiling
+                            node.last_variance += (max(0.0, raw) - node.last_variance) * 0.12
+
                         elif node.sim_target_state == 1:
-                            # Movement: smooth large waves + medium jitter
+                            # MOVEMENT: hard floor at 110% of threshold
                             node.current_state = 1
-                            target = (node.threshold * 1.5) + slow_wave + random.uniform(-0.2 * node.threshold, 0.2 * node.threshold)
-                            node.last_variance += (max(node.threshold + 0.1, target) - node.last_variance) * 0.15
+                            base = T * 1.6
+                            wave = math.sin(current_time * 2.0) * (T * 0.25)
+                            jitter = random.gauss(0, T * 0.12)
+                            raw = max(base + wave + jitter, T * 1.1)  # HARD floor
+                            node.last_variance += (raw - node.last_variance) * 0.12
+
                         elif node.sim_target_state == 2:
-                            # Fall: realistic peak and drop + high jitter on impact
-                            if elapsed < 0.8:
-                                node.current_state = 1 # MOVEMENT while peaking
-                                progress = elapsed / 0.8
-                                target = (node.threshold * 2.5) * math.sin(progress * (math.pi / 2)) + random.uniform(-0.2 * node.threshold, 0.2 * node.threshold)
-                                node.last_variance = max(0.0, target)
-                            elif elapsed < 1.5:
-                                node.current_state = 1 # MOVEMENT while dropping
-                                progress = (elapsed - 0.8) / 0.7
-                                target = (node.threshold * 2.5) * math.cos(progress * (math.pi / 2)) + random.uniform(-0.1 * node.threshold, 0.1 * node.threshold)
-                                node.last_variance = max(0.0, target)
+                            # FALL: peak -> drop -> settle below threshold
+                            if elapsed < 1.0:
+                                node.current_state = 1  # MOVEMENT while rising
+                                progress = elapsed / 1.0
+                                raw = (T * 2.2) * math.sin(progress * (math.pi / 2)) + random.gauss(0, T * 0.08)
+                                node.last_variance = max(0.0, raw)
+                            elif elapsed < 2.0:
+                                node.current_state = 1  # MOVEMENT while falling
+                                progress = (elapsed - 1.0) / 1.0
+                                raw = (T * 2.2) * math.cos(progress * (math.pi / 2)) + random.gauss(0, T * 0.06)
+                                node.last_variance = max(0.0, raw)
                             else:
-                                node.current_state = 2 # FALL DETECTED
-                                target = (node.threshold * 0.2) + smooth_wave + random.uniform(-0.05 * node.threshold, 0.05 * node.threshold)
-                                node.last_variance += (max(0.0, target) - node.last_variance) * 0.15
+                                node.current_state = 2  # FALL DETECTED - settled below
+                                wave = math.sin(current_time * 3.0) * (T * 0.06)
+                                raw = min((T * 0.25) + wave + random.gauss(0, T * 0.03), T * 0.85)
+                                node.last_variance += (max(0.0, raw) - node.last_variance) * 0.12
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
