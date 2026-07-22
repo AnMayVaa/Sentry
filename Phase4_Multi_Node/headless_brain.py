@@ -319,34 +319,34 @@ class HeadlessBrain:
                         node.last_seen = current_time # Keep alive
                         elapsed = current_time - node.sim_start_time
                         
-                        smooth_wave = math.sin(current_time * 4.0) * 0.15
-                        slow_wave = math.sin(current_time * 1.5) * 0.8
+                        smooth_wave = math.sin(current_time * 4.0) * (node.threshold * 0.08)
+                        slow_wave = math.sin(current_time * 1.5) * (node.threshold * 0.3)
                         
                         if node.sim_target_state == 0:
                             # Static: smooth small waves + micro jitter
                             node.current_state = 0
-                            target = (node.threshold * 0.4) + smooth_wave + random.uniform(-0.1, 0.1)
+                            target = (node.threshold * 0.4) + smooth_wave + random.uniform(-0.05 * node.threshold, 0.05 * node.threshold)
                             node.last_variance += (max(0.0, target) - node.last_variance) * 0.15
                         elif node.sim_target_state == 1:
                             # Movement: smooth large waves + medium jitter
                             node.current_state = 1
-                            target = (node.threshold * 1.5) + slow_wave + random.uniform(-0.4, 0.4)
+                            target = (node.threshold * 1.5) + slow_wave + random.uniform(-0.2 * node.threshold, 0.2 * node.threshold)
                             node.last_variance += (max(node.threshold + 0.1, target) - node.last_variance) * 0.15
                         elif node.sim_target_state == 2:
                             # Fall: realistic peak and drop + high jitter on impact
                             if elapsed < 0.8:
                                 node.current_state = 1 # MOVEMENT while peaking
                                 progress = elapsed / 0.8
-                                target = (node.threshold * 2.5) * math.sin(progress * (math.pi / 2)) + random.uniform(-0.4, 0.4)
+                                target = (node.threshold * 2.5) * math.sin(progress * (math.pi / 2)) + random.uniform(-0.2 * node.threshold, 0.2 * node.threshold)
                                 node.last_variance = max(0.0, target)
                             elif elapsed < 1.5:
                                 node.current_state = 1 # MOVEMENT while dropping
                                 progress = (elapsed - 0.8) / 0.7
-                                target = (node.threshold * 2.5) * math.cos(progress * (math.pi / 2)) + random.uniform(-0.2, 0.2)
+                                target = (node.threshold * 2.5) * math.cos(progress * (math.pi / 2)) + random.uniform(-0.1 * node.threshold, 0.1 * node.threshold)
                                 node.last_variance = max(0.0, target)
                             else:
                                 node.current_state = 2 # FALL DETECTED
-                                target = (node.threshold * 0.2) + smooth_wave + random.uniform(-0.1, 0.1)
+                                target = (node.threshold * 0.2) + smooth_wave + random.uniform(-0.05 * node.threshold, 0.05 * node.threshold)
                                 node.last_variance += (max(0.0, target) - node.last_variance) * 0.15
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
