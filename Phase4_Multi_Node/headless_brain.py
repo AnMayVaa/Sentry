@@ -50,7 +50,8 @@ class NodeState:
         self.threshold = THRESHOLD
         self.sim_locked = False
         self.sim_start_time = 0.0
-        self.sim_noise = 0.0  # Smoothed noise accumulator — prevents shark-tooth spikes
+        self.sim_noise = 0.0
+        self.sim_base = 0.0  # Smoothly lerped amplitude level
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -147,14 +148,8 @@ class HeadlessBrain:
                             node.sim_target_state = state
                             node.sim_start_time = time.time()
                             node.sim_noise = 0.0
-                            T = node.threshold
-                            # Snap variance immediately into correct zone on click
-                            if state == 0:
-                                node.last_variance = T * 0.35
-                            elif state == 1:
-                                node.last_variance = T * 1.6
-                            elif state == 2:
-                                node.last_variance = T * 1.6
+                            # sim_base starts from current value so amplitude ramps smoothly
+                            node.sim_base = node.last_variance
                             if state == 2:
                                 # Debug FALL: fire LINE with short 5s cooldown (for testing)
                                 now = time.time()
@@ -329,49 +324,54 @@ class HeadlessBrain:
                         node.last_seen = current_time # Keep alive
                         T = node.threshold
                         elapsed = current_time - node.sim_start_time
-                        import random, math
+                        t = current_time
 
-                        # Noise drifts VERY slowly (0.02) so no frame-to-frame spikes
-                        node.sim_noise += (random.gauss(0, 1) - node.sim_noise) * 0.02
+                        # sim_noise drifts very slowly — only used for subtle offset
+                        node.sim_noise += (random.gauss(0, 1) - node.sim_noise) * 0.015
+
+                        # Natural irregular texture: sum of harmonics (no gauss each frame = no teeth)
+                        texture = (math.sin(t * 1.1)  * 0.40 +
+                                   math.sin(t * 2.7)  * 0.25 +
+                                   math.sin(t * 5.3)  * 0.12 +
+                                   node.sim_noise     * 0.15)
+                        # texture is ~-0.8 to +0.8, gives organic bumps
 
                         if node.sim_target_state == 0:
-                            # STATIC: always below threshold
+                            # STATIC: ramp sim_base down toward 40% of threshold
                             node.current_state = 0
-                            base  = T * 0.38
-                            wave  = math.sin(current_time * 0.9) * (T * 0.05)
-                            noise = node.sim_noise * (T * 0.012)
-                            node.last_variance = min(max(base + wave + noise, 0.0), T * 0.82)
+                            node.sim_base += (T * 0.40 - node.sim_base) * 0.04
+                            raw = node.sim_base * (1 + texture * 0.10)
+                            node.last_variance = min(max(raw, 0.0), T * 0.85)
 
                         elif node.sim_target_state == 1:
-                            # MOVEMENT: always above threshold — direct set, no lerp
+                            # MOVEMENT: ramp sim_base up toward 170% of threshold
                             node.current_state = 1
-                            base  = T * 1.7
-                            wave  = math.sin(current_time * 0.7) * (T * 0.18)
-                            noise = node.sim_noise * (T * 0.04)
-                            node.last_variance = max(base + wave + noise, T * 1.15)
+                            node.sim_base += (T * 1.70 - node.sim_base) * 0.04
+                            raw = node.sim_base * (1 + texture * 0.12)
+                            node.last_variance = max(raw, T * 1.05)  # hard floor
 
                         elif node.sim_target_state == 2:
-                            # FALL: slow rise 1.5s → slow drop 1.5s → settle below
+                            # FALL: drive sim_base through a bell curve then settle
                             if elapsed < 1.5:
                                 node.current_state = 1
                                 progress = elapsed / 1.5
-                                raw = (T * 1.7) * math.sin(progress * math.pi / 2)
-                                raw += node.sim_noise * (T * 0.02)
+                                target = T * 1.7 * math.sin(progress * math.pi / 2)
+                                node.sim_base += (target - node.sim_base) * 0.06
+                                raw = node.sim_base + texture * T * 0.025
                                 node.last_variance = max(0.0, raw)
                             elif elapsed < 3.0:
                                 node.current_state = 1
                                 progress = (elapsed - 1.5) / 1.5
-                                raw = (T * 1.7) * math.cos(progress * math.pi / 2)
-                                raw += node.sim_noise * (T * 0.02)
+                                target = T * 1.7 * math.cos(progress * math.pi / 2)
+                                node.sim_base += (target - node.sim_base) * 0.06
+                                raw = node.sim_base + texture * T * 0.02
                                 node.last_variance = max(0.0, raw)
                             else:
-                                # FALL DETECTED — settled below threshold
+                                # FALL DETECTED — settle quietly below threshold
                                 node.current_state = 2
-                                base  = T * 0.28
-                                wave  = math.sin(current_time * 0.9) * (T * 0.05)
-                                noise = node.sim_noise * (T * 0.012)
-                                node.last_variance = min(max(base + wave + noise, 0.0), T * 0.82)
-
+                                node.sim_base += (T * 0.30 - node.sim_base) * 0.04
+                                raw = node.sim_base * (1 + texture * 0.10)
+                                node.last_variance = min(max(raw, 0.0), T * 0.85)
                                 
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
