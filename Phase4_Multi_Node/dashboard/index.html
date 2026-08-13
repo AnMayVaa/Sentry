@@ -525,12 +525,6 @@
             </div>
         </div>
 
-        <!-- ALARM RECEIVERS card — hidden until a receiver is online -->
-        <div class="glass control-card" id="alarm-receiver-card" style="gap:10px; display:none;">
-            <div class="control-card-label" data-th="อุปกรณ์แจ้งเตือนฉุกเฉิน" data-en="Alarm Receivers">อุปกรณ์แจ้งเตือนฉุกเฉิน</div>
-            <div id="alarm-receiver-list" style="display:flex;flex-direction:column;gap:8px;">
-            </div>
-        </div>
 
         <!-- COL 2: Transmitter Target -->
         <div class="glass control-card" style="justify-content:center;">
@@ -954,34 +948,7 @@
                 return;
             }
 
-            // Live data — also update alarm receivers
-            if (data.alarm_receivers !== undefined) {
-                const card   = document.getElementById('alarm-receiver-card');
-                const list   = document.getElementById('alarm-receiver-list');
-                if (data.alarm_receivers.length === 0) {
-                    card.style.display = 'none';
-                    list.querySelectorAll('.alarm-rx-row').forEach(el => el.remove());
-                } else {
-                    card.style.display = '';
-                    const existingIPs = new Set([...list.querySelectorAll('.alarm-rx-row')].map(el => el.dataset.ip));
-                    const newIPs = new Set(data.alarm_receivers.map(r => r.ip));
-                    existingIPs.forEach(ip => { if (!newIPs.has(ip)) list.querySelector(`[data-ip="${ip}"]`)?.remove(); });
-                    data.alarm_receivers.forEach(rx => {
-                        if (!existingIPs.has(rx.ip)) {
-                            const row = document.createElement('div');
-                            row.className = 'conn-row alarm-rx-row';
-                            row.dataset.ip = rx.ip;
-                            row.innerHTML = `
-                                <div class="conn-row-info">
-                                    <div class="conn-row-title">🔔 Alarm Receiver</div>
-                                    <div class="conn-row-sub">${rx.ip}</div>
-                                </div>
-                                <span style="color:var(--success);font-size:11px;font-weight:700;letter-spacing:1px;">ONLINE</span>`;
-                            list.appendChild(row);
-                        }
-                    });
-                }
-            }
+            // Live data
             pendingData = data;
             if (!rafScheduled) {
                 rafScheduled = true;

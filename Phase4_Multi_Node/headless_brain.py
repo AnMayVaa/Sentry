@@ -414,16 +414,6 @@ class HeadlessBrain:
                         "threshold": float(node.threshold),
                         "amplitudes": [round(float(a), 1) for a in amps]
                     }
-                # Add alarm receivers — mark online if heartbeat within last 15s
-                stale_rx = [ip for ip, rx in self.alarm_receivers.items()
-                            if current_time - rx["last_seen"] > 15.0]
-                for ip in stale_rx:
-                    del self.alarm_receivers[ip]
-
-                payload["alarm_receivers"] = [
-                    {"ip": rx["ip"], "online": True}
-                    for rx in self.alarm_receivers.values()
-                ]
                 await self.broadcast_ws(payload)
                 
             await asyncio.sleep(0.066)  # 15 FPS - perfect for web dashboard over Cloudflare
