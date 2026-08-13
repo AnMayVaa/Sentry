@@ -8,9 +8,20 @@ const char* ssid = "BUNDAOBUNTAI";
 const char* password = "ohm12345";
 const char* dest_host = "OhmPatumwan"; // Hostname of the Raspberry Pi
 const int dest_port = 5000;
-String node_location = "Bath Room"; // Change this before uploading to each node!
+String node_location = "Living Room"; // Change this before uploading to each node!
 
-WiFiUDP udp;
+// --- ALARM CONFIGURATION ---
+const int LED_PIN = 2;
+const int BUZZER_PIN = 4;
+const int BUZZER_FREQ = 2000;
+const int BUZZER_RES_BITS = 8;
+const int FREQS[] = { 1000, 1500, 2000, 2500 }; // 4 tones for the siren
+
+const int ALARM_UDP_PORT = 5005;
+
+WiFiUDP udp;         // For sending CSI and receiving commands on port 5000
+WiFiUDP alarm_udp;   // For receiving fall alerts on port 5005
+
 IPAddress target_ip;
 bool target_resolved = false;
 
@@ -37,6 +48,12 @@ uint8_t dedicated_tx_mac[6] = {0xD4, 0xE9, 0xF4, 0xA4, 0x40, 0xEC};
 
 // The Router's MAC address will be populated automatically when connected
 uint8_t router_mac[6];
+
+// Alarm State Variables (Non-blocking)
+bool alarm_active = false;
+unsigned long last_tone_change = 0;
+int current_tone_index = 0;
+int alarm_loop_count = 0;
 
 // The CSI Callback (Runs in the background Wi-Fi thread on Core 0)
 void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info) {
@@ -75,6 +92,12 @@ void setup() {
     Serial.begin(460800);
     pinMode(0, INPUT_PULLUP); // BOOT button for SOS
     
+    // Setup Alarm Pins (ESP32 Arduino Core 3.x API)
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
+    ledcAttach(BUZZER_PIN, BUZZER_FREQ, BUZZER_RES_BITS);
+    ledcWriteTone(BUZZER_PIN, 0); // Ensure buzzer is off
+    
     csi_queue = xQueueCreate(30, sizeof(csi_packet_t));
     
     Serial.println("Connecting to WiFi...");
@@ -111,15 +134,16 @@ void setup() {
     Serial.print("\nResolved IP: ");
     Serial.println(target_ip);
 
-    // Start UDP Server to listen for commands from Pi
+    // Start UDP Listeners
     udp.begin(5000);
-    Serial.println("UDP Listener started on port 5000.");
+    alarm_udp.begin(ALARM_UDP_PORT);
+    Serial.println("UDP CSI Command Listener started on port 5000.");
+    Serial.println("UDP Alarm Trigger Listener started on port 5005.");
 
     // Enable Promiscuous mode and CSI sniffing (Works alongside STA mode!)
     esp_wifi_set_promiscuous(true);
     wifi_promiscuous_filter_t rx_filter = { .filter_mask = WIFI_PROMIS_FILTER_MASK_ALL };
     esp_wifi_set_promiscuous_filter(&rx_filter);
-    // Note: We don't force channel here. It stays on the Router's channel.
     
     esp_wifi_set_csi(true);
     wifi_csi_config_t csi_config = {
@@ -130,11 +154,11 @@ void setup() {
     esp_wifi_set_csi_config(&csi_config);
     esp_wifi_set_csi_rx_cb(wifi_csi_rx_cb, NULL);
     
-    Serial.println("CSI Sniffing Started!");
+    Serial.println("Phase 6 Combined Node Started! CSI Sniffing Active.");
 }
 
 void loop() {
-    // 1. Process Incoming Commands from Pi (UDP)
+    // 1. Process Incoming Commands from Pi (UDP 5000)
     int packetSize = udp.parsePacket();
     if (packetSize) {
         char incomingPacket[255];
@@ -153,38 +177,69 @@ void loop() {
         }
     }
 
-    // 2. Process Incoming Commands from Pi (Serial USB)
-    if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n');
-        cmd.trim();
-        if (cmd == "MODE_ROUTER") {
-            currentTxMode = MODE_ROUTER;
-            Serial.println("Switched to Router TX Mode.");
-        } else if (cmd == "MODE_TX_NODE") {
-            currentTxMode = MODE_TX_NODE;
-            Serial.println("Switched to Dedicated TX Mode.");
+    // 2. Process Incoming Alarm Triggers (UDP 5005)
+    int alarmPacketSize = alarm_udp.parsePacket();
+    if (alarmPacketSize) {
+        char incomingAlarm[255];
+        int len = alarm_udp.read(incomingAlarm, 255);
+        if (len > 0) {
+            incomingAlarm[len] = 0;
+            String msg = String(incomingAlarm);
+            msg.trim();
+            if (msg.startsWith("FALL_ALERT") || msg.startsWith("ALARM_TRIGGER")) {
+                Serial.println("\n[ALARM] Fall Alert Received! Triggering Siren!");
+                alarm_active = true;
+                last_tone_change = millis();
+                current_tone_index = 0;
+                alarm_loop_count = 0;
+                ledcWriteTone(BUZZER_PIN, FREQS[0]);
+                digitalWrite(LED_PIN, HIGH);
+            }
         }
     }
-    
-    // 2.5 Send Heartbeat to Pi so it learns our IP address!
+
+    // 3. Process Non-Blocking Alarm Siren
+    if (alarm_active) {
+        unsigned long now = millis();
+        if (now - last_tone_change > 100) {
+            last_tone_change = now;
+            current_tone_index++;
+            
+            if (current_tone_index >= 4) {
+                current_tone_index = 0;
+                alarm_loop_count++;
+            }
+            
+            // Play for 3 full cycles
+            if (alarm_loop_count >= 3) {
+                alarm_active = false;
+                ledcWriteTone(BUZZER_PIN, 0); // Stop buzzer
+                digitalWrite(LED_PIN, LOW);   // Turn off LED
+                Serial.println("[ALARM] Siren stopped.");
+            } else {
+                ledcWriteTone(BUZZER_PIN, FREQS[current_tone_index]);
+                digitalWrite(LED_PIN, (current_tone_index % 2 == 0) ? HIGH : LOW);
+            }
+        }
+    }
+
+    // 4. Send Heartbeats to Pi
     static unsigned long last_heartbeat = 0;
-    if (millis() - last_heartbeat > 1000 && target_resolved) {
+    if (millis() - last_heartbeat > 5000 && target_resolved) {
+        // Heartbeat for CSI Dashboard
         udp.beginPacket(target_ip, dest_port);
         udp.print("HEARTBEAT\n");
         udp.endPacket();
+        
+        // Heartbeat for Alarm System (Port 5002)
+        udp.beginPacket(target_ip, 5002);
+        udp.print("ALARM_READY:" + WiFi.localIP().toString() + "\n");
+        udp.endPacket();
+        
         last_heartbeat = millis();
     }
 
-    // 3. Check for SOS Button
-    // if (digitalRead(0) == LOW && target_resolved) {
-    //     udp.beginPacket(target_ip, dest_port);
-    //     udp.print("SOS_ALERT," + node_location + "\n");
-    //     udp.endPacket();
-    //     Serial.println("SOS_ALERT," + node_location);
-    //     delay(1000); // Debounce
-    // }
-    
-    // 4. Process CSI Queue - send each packet IMMEDIATELY (no batching!)
+    // 5. Process CSI Queue - send each packet IMMEDIATELY (no batching!)
     csi_packet_t pkt;
     while (xQueueReceive(csi_queue, &pkt, 0) == pdTRUE && target_resolved) {
         // Build the string into a buffer first, then send in one shot
@@ -201,6 +256,9 @@ void loop() {
         udp.endPacket();
 
         // Also mirror to Serial for USB mode (single write, non-blocking)
-        Serial.write(txBuf, pos);
+        // Only print CSI if alarm isn't actively going off, to avoid serial flood during alarm prints
+        if (!alarm_active) {
+            Serial.write(txBuf, pos);
+        }
     }
 }
