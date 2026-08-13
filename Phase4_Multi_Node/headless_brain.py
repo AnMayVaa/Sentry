@@ -344,6 +344,17 @@ class HeadlessBrain:
                 print(f"[IOT] Node disconnected/timed out: {loc}")
                 del self.nodes[loc]
                 
+            # If no physical nodes are connected, ensure there is always a 'Mock Sensor' available for testing the alarm
+            if not self.nodes:
+                if "Mock Sensor" not in self.nodes:
+                    self.nodes["Mock Sensor"] = NodeState()
+                    self.nodes["Mock Sensor"].sim_locked = True  # lock it in mock mode
+                    print("[IOT] No hardware nodes found. Injecting 'Mock Sensor' for testing.")
+            else:
+                # If physical nodes exist, remove the mock sensor
+                if "Mock Sensor" in self.nodes and len(self.nodes) > 1:
+                    del self.nodes["Mock Sensor"]
+                    
             # 2. Build payload of ALL active nodes
             if self.connected_clients:
                 import random
