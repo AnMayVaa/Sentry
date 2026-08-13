@@ -525,6 +525,16 @@
             </div>
         </div>
 
+        <!-- ALARM RECEIVERS card -->
+        <div class="glass control-card" id="alarm-receiver-card" style="gap:10px;">
+            <div class="control-card-label" data-th="อุปกรณ์แจ้งเตือนฉุกเฉิน" data-en="Alarm Receivers">อุปกรณ์แจ้งเตือนฉุกเฉิน</div>
+            <div id="alarm-receiver-list" style="display:flex;flex-direction:column;gap:8px;">
+                <div style="color:var(--text-muted);font-size:12px;padding:4px 0;" id="alarm-no-device">
+                    🔇 ไม่มีอุปกรณ์เชื่อมต่อ
+                </div>
+            </div>
+        </div>
+
         <!-- COL 2: Transmitter Target -->
         <div class="glass control-card" style="justify-content:center;">
             <div class="control-card-label" data-th="แหล่งสัญญาณ Wi-Fi" data-en="Transmitter Target">แหล่งสัญญาณ Wi-Fi</div>
@@ -947,7 +957,38 @@
                 return;
             }
 
-            // Live data
+            // Live data — also update alarm receivers
+            if (data.alarm_receivers !== undefined) {
+                const list = document.getElementById('alarm-receiver-list');
+                const noDevice = document.getElementById('alarm-no-device');
+                if (data.alarm_receivers.length === 0) {
+                    if (noDevice) noDevice.style.display = '';
+                    // Remove any existing receiver rows
+                    list.querySelectorAll('.alarm-rx-row').forEach(el => el.remove());
+                } else {
+                    if (noDevice) noDevice.style.display = 'none';
+                    // Sync rows
+                    const existingIPs = new Set([...list.querySelectorAll('.alarm-rx-row')].map(el => el.dataset.ip));
+                    const newIPs = new Set(data.alarm_receivers.map(r => r.ip));
+                    // Remove stale
+                    existingIPs.forEach(ip => { if (!newIPs.has(ip)) list.querySelector(`[data-ip="${ip}"]`)?.remove(); });
+                    // Add new
+                    data.alarm_receivers.forEach(rx => {
+                        if (!existingIPs.has(rx.ip)) {
+                            const row = document.createElement('div');
+                            row.className = 'conn-row alarm-rx-row';
+                            row.dataset.ip = rx.ip;
+                            row.innerHTML = `
+                                <div class="conn-row-info">
+                                    <div class="conn-row-title">🔔 Alarm Receiver</div>
+                                    <div class="conn-row-sub">${rx.ip}</div>
+                                </div>
+                                <span style="color:var(--success);font-size:11px;font-weight:700;letter-spacing:1px;">ONLINE</span>`;
+                            list.appendChild(row);
+                        }
+                    });
+                }
+            }
             pendingData = data;
             if (!rafScheduled) {
                 rafScheduled = true;

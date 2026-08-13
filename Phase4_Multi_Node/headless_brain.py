@@ -62,6 +62,10 @@ class HeadlessBrain:
         self.threshold = threshold
         
         self.nodes = {} # Dictionary mapping location_name -> NodeState
+        self.alarm_receivers = {}  # ip -> {"ip", "last_seen"}
+
+        # Start heartbeat listener for alarm receivers (UDP port 5002)
+        threading.Thread(target=self._alarm_heartbeat_listener, daemon=True).start()
         
         self.ml_model = None
         try:
@@ -86,6 +90,29 @@ class HeadlessBrain:
         
         # Background thread to poll COM ports
         self._poll_com_ports()
+
+    def _alarm_heartbeat_listener(self):
+        """Listens for UDP heartbeats from Phase 5 Alarm Receivers on port 5002."""
+        import socket
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("0.0.0.0", 5002))
+            sock.settimeout(2.0)
+            print("[ALARM] Listening for alarm receiver heartbeats on UDP 5002")
+            while True:
+                try:
+                    data, addr = sock.recvfrom(128)
+                    msg = data.decode("utf-8").strip()
+                    if msg.startswith("ALARM_READY"):
+                        ip = addr[0]
+                        self.alarm_receivers[ip] = {"ip": ip, "last_seen": time.time()}
+                except socket.timeout:
+                    pass
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[ALARM] Heartbeat listener failed: {e}")
 
     def _poll_com_ports(self):
         def _poll():
@@ -387,6 +414,16 @@ class HeadlessBrain:
                         "threshold": float(node.threshold),
                         "amplitudes": [round(float(a), 1) for a in amps]
                     }
+                # Add alarm receivers — mark online if heartbeat within last 15s
+                stale_rx = [ip for ip, rx in self.alarm_receivers.items()
+                            if current_time - rx["last_seen"] > 15.0]
+                for ip in stale_rx:
+                    del self.alarm_receivers[ip]
+
+                payload["alarm_receivers"] = [
+                    {"ip": rx["ip"], "online": True}
+                    for rx in self.alarm_receivers.values()
+                ]
                 await self.broadcast_ws(payload)
                 
             await asyncio.sleep(0.066)  # 15 FPS - perfect for web dashboard over Cloudflare

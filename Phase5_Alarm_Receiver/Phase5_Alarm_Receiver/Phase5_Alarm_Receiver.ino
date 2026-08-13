@@ -4,12 +4,11 @@
 //
 // Compatible with ESP32 Arduino Core v3.x (new LEDC API)
 //
-// Listens for UDP "FALL_ALERT" packets from the Raspberry Pi
-// and triggers:
-//   1. Red LED blink pattern  (GPIO 2)
-//   2. Scary descending buzzer (GPIO 4, passive buzzer)
-//
-// Graceful: if LED/buzzer not wired, no crash.
+// - Listens for UDP "FALL_ALERT" on port 5001
+// - Sends heartbeat "ALARM_READY" broadcast every 5s on port 5002
+//   so the Raspberry Pi dashboard can show this device as online
+// - Triggers: Red LED blink + scary descending buzzer on fall
+// - Graceful: if LED/buzzer not wired, no crash
 // ============================================================
 
 #include <WiFi.h>
@@ -19,13 +18,18 @@
 const char* WIFI_SSID     = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
-const int ALARM_UDP_PORT = 5001;
+const int ALARM_UDP_PORT     = 5001;  // Receive fall alerts from Pi
+const int HEARTBEAT_UDP_PORT = 5002;  // Send heartbeats to Pi
+const int HEARTBEAT_INTERVAL = 5000;  // ms between heartbeats
 
-const int LED_PIN    = 2;   // Red LED (220Ω resistor in series)
+const int LED_PIN    = 2;   // Red LED  (220Ω resistor in series)
 const int BUZZER_PIN = 4;   // Passive buzzer (100Ω resistor in series)
 // -----------------------------------
 
-WiFiUDP udp;
+WiFiUDP udpRx;     // Receive alerts
+WiFiUDP udpTx;     // Send heartbeats
+
+unsigned long lastHeartbeat = 0;
 
 // Scary descending frequency sweep
 const int NOTE_COUNT = 8;
@@ -36,12 +40,18 @@ const int FINAL_BLINKS          = 10;
 
 // ---- helpers ----
 void buzzerTone(int freq) {
-  // New ESP32 Core v3 API: ledcWriteTone(pin, freq)
   ledcWriteTone(BUZZER_PIN, freq);
 }
-
 void buzzerOff() {
   ledcWriteTone(BUZZER_PIN, 0);
+}
+
+void sendHeartbeat() {
+  String msg = "ALARM_READY:" + WiFi.localIP().toString();
+  udpTx.beginPacket(IPAddress(255,255,255,255), HEARTBEAT_UDP_PORT);
+  udpTx.print(msg);
+  udpTx.endPacket();
+  Serial.printf("[ALARM] Heartbeat sent: %s\n", msg.c_str());
 }
 
 // ---- Boot setup ----
@@ -49,15 +59,12 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n[ALARM] Sentry Phase 5 - Alarm Receiver Boot");
 
-  // LED
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // Buzzer: attach with new API (no channel needed)
-  ledcAttach(BUZZER_PIN, 2000, 8);  // pin, initial freq, 8-bit resolution
+  ledcAttach(BUZZER_PIN, 2000, 8);
   buzzerOff();
 
-  // WiFi
   Serial.printf("[ALARM] Connecting to WiFi: %s\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -74,15 +81,16 @@ void setup() {
     Serial.println("\n[ALARM] WiFi failed — will retry in loop");
   }
 
-  udp.begin(ALARM_UDP_PORT);
+  udpRx.begin(ALARM_UDP_PORT);
   Serial.printf("[ALARM] Listening on UDP port %d\n", ALARM_UDP_PORT);
+  Serial.printf("[ALARM] Sending heartbeats on UDP port %d\n", HEARTBEAT_UDP_PORT);
 
   bootBeep();
+  sendHeartbeat(); // Send immediately on boot
 }
 
 // ---- Main loop ----
 void loop() {
-  // Reconnect if WiFi dropped
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[ALARM] WiFi lost, reconnecting...");
     WiFi.reconnect();
@@ -90,11 +98,17 @@ void loop() {
     return;
   }
 
-  // Check UDP
-  int packetSize = udp.parsePacket();
+  // Send heartbeat every HEARTBEAT_INTERVAL ms
+  if (millis() - lastHeartbeat >= HEARTBEAT_INTERVAL) {
+    sendHeartbeat();
+    lastHeartbeat = millis();
+  }
+
+  // Check for fall alert UDP packet
+  int packetSize = udpRx.parsePacket();
   if (packetSize > 0) {
     char buf[64];
-    int len = udp.read(buf, sizeof(buf) - 1);
+    int len = udpRx.read(buf, sizeof(buf) - 1);
     if (len > 0) {
       buf[len] = '\0';
       String msg = String(buf);
