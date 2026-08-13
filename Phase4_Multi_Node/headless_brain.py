@@ -19,6 +19,7 @@ from serial_reader import SerialReader
 from udp_reader import UDPReader
 from ml_engine import extract_features, extract_features_np
 from line_notifier import send_fall_alert
+from alarm_broadcaster import send_alarm_broadcast
 
 # Load Config
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
@@ -156,6 +157,7 @@ class HeadlessBrain:
                                 if now - node.last_line_alert_time > 5.0:
                                     node.last_line_alert_time = now
                                     threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
+                                    threading.Thread(target=send_alarm_broadcast, args=(node_id,), daemon=True).start()
                             print(f"[DEBUG] Locked state={state} on {node_id}")
 
                     elif data.get("command") == "release_sim":
@@ -170,6 +172,7 @@ class HeadlessBrain:
                         node_id = data.get("node_id", "Debug")
                         print(f"[DEBUG] Triggering LINE alert for {node_id}")
                         threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
+                        threading.Thread(target=send_alarm_broadcast, args=(node_id,), daemon=True).start()
 
                     elif data.get("command") == "get_nodes":
                         nodes_list = list(self.nodes.keys())
@@ -440,6 +443,7 @@ class HeadlessBrain:
             print(f"[{time.strftime('%H:%M:%S')}] SOS BUTTON PRESSED IN {location_name}!")
             if current_time - node.last_line_alert_time > 60.0:
                 threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
+                threading.Thread(target=send_alarm_broadcast, args=(location_name,), daemon=True).start()
                 node.last_line_alert_time = current_time
             return
 
@@ -500,6 +504,7 @@ class HeadlessBrain:
                                     node.last_line_alert_time = current_time
                                     print(f"[{time.strftime('%H:%M:%S')}] FALL DETECTED IN {location_name}!")
                                     threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
+                                    threading.Thread(target=send_alarm_broadcast, args=(location_name,), daemon=True).start()
                             else:
                                 # Keep graph updated in debug mode, just don't change state
                                 pass
