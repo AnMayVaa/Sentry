@@ -18,7 +18,7 @@
 const char* WIFI_SSID     = "BUNDAOBUNTAI";
 const char* WIFI_PASSWORD = "ohm12345";
 
-const int ALARM_UDP_PORT     = 5001;  // Receive fall alerts from Pi
+const int ALARM_UDP_PORT     = 5005;  // Receive fall alerts from Pi
 const int HEARTBEAT_UDP_PORT = 5002;  // Send heartbeats to Pi
 const int HEARTBEAT_INTERVAL = 5000;  // ms between heartbeats
 

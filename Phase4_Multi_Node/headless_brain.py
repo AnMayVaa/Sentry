@@ -414,9 +414,10 @@ class HeadlessBrain:
                         "threshold": float(node.threshold),
                         "amplitudes": [round(float(a), 1) for a in amps]
                     }
+                # broadcast once per frame, outside the node loop
                 await self.broadcast_ws(payload)
                 
-            await asyncio.sleep(0.066)  # 15 FPS - perfect for web dashboard over Cloudflare
+            await asyncio.sleep(0.066)  # 15 FPS
 
     async def _ws_main(self):
         import http

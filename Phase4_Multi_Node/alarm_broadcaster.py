@@ -21,10 +21,10 @@ CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 try:
     with open(CONFIG_PATH, "r") as f:
         _config = json.load(f)
-    ALARM_UDP_PORT = _config.get("alarm", {}).get("udp_port", 5001)
+    ALARM_UDP_PORT = _config.get("alarm", {}).get("udp_port", 5005)
     ALARM_ENABLED  = _config.get("alarm", {}).get("enabled", True)
 except Exception:
-    ALARM_UDP_PORT = 5001
+    ALARM_UDP_PORT = 5005
     ALARM_ENABLED  = True
 
 
