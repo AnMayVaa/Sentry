@@ -53,6 +53,7 @@ class NodeState:
         self.sim_start_time = 0.0
         self.sim_noise = 0.0
         self.sim_base = 0.0  # Smoothly lerped amplitude level
+        self.sim_fall_alert_pending = False
 
 class HeadlessBrain:
     def __init__(self, port, threshold=2.0):
@@ -179,12 +180,7 @@ class HeadlessBrain:
                             # sim_base starts from current value so amplitude ramps smoothly
                             node.sim_base = node.last_variance
                             if state == 2:
-                                # Debug FALL: fire LINE with short 5s cooldown (for testing)
-                                now = time.time()
-                                if now - node.last_line_alert_time > 5.0:
-                                    node.last_line_alert_time = now
-                                    threading.Thread(target=send_fall_alert, args=(node_id,), daemon=True).start()
-                                    threading.Thread(target=send_alarm_broadcast, args=(node_id,), daemon=True).start()
+                                node.sim_fall_alert_pending = True
                             print(f"[DEBUG] Locked state={state} on {node_id}")
 
                     elif data.get("command") == "release_sim":
@@ -403,6 +399,14 @@ class HeadlessBrain:
                                 raw = node.sim_base * (1 + texture * 0.10)
                                 node.last_variance = min(max(raw, 0.0), T * 0.85)
                                 
+                                if node.sim_fall_alert_pending:
+                                    node.sim_fall_alert_pending = False
+                                    if current_time - node.last_line_alert_time > 5.0:
+                                        node.last_line_alert_time = current_time
+                                        print(f"[{time.strftime('%H:%M:%S')}] DEBUG FALL TRIGGERED IN {loc}!")
+                                        threading.Thread(target=send_fall_alert, args=(loc,), daemon=True).start()
+                                        threading.Thread(target=send_alarm_broadcast, args=(loc,), daemon=True).start()
+
                     amps = node.history[-1] if len(node.history) > 0 else [0]*52
                     # Handle the case where SOS string might be in history (it shouldn't be, but just in case)
                     if isinstance(amps, str):
