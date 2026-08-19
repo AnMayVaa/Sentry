@@ -24,7 +24,7 @@ const int HEARTBEAT_INTERVAL = 5000;  // ms between heartbeats
 
 const int LED_PIN    = 2;   // Red LED  (220Ω resistor in series)
 const int BUZZER_PIN = 4;   // Passive buzzer (100Ω resistor in series)
-const int BUTTON_PIN = 5;   // Reset / Dismiss button (Connect Pin 5 to GND when pressed)
+const int BUTTON_PIN = 17;  // Push button between GPIO 17 and GND (Active LOW)
 // -----------------------------------
 
 WiFiUDP udpRx;     // Receive alerts
@@ -36,10 +36,6 @@ unsigned long lastHeartbeat = 0;
 const int NOTE_COUNT = 8;
 const int FREQS[NOTE_COUNT]     = {2000, 1700, 1400, 1100, 900, 700, 500, 300};
 const int DURATIONS[NOTE_COUNT] = { 120,  120,  120,  120, 150, 150, 180, 300};
-
-bool alarm_active = false;
-unsigned long last_tone_change = 0;
-int current_tone_index = 0;
 
 // ---- helpers ----
 void buzzerTone(int freq) {
@@ -88,6 +84,7 @@ void setup() {
   udpRx.begin(ALARM_UDP_PORT);
   Serial.printf("[ALARM] Listening on UDP port %d\n", ALARM_UDP_PORT);
   Serial.printf("[ALARM] Sending heartbeats on UDP port %d\n", HEARTBEAT_UDP_PORT);
+  Serial.println("[ALARM] Alarm Reset Button active on Pin 17.");
 
   bootBeep();
   sendHeartbeat(); // Send immediately on boot
@@ -120,36 +117,33 @@ void loop() {
       Serial.printf("[ALARM] UDP received: %s\n", msg.c_str());
 
       if (msg.startsWith("FALL_ALERT")) {
-        Serial.println("[ALARM] FALL DETECTED — siren activated until button on Pin 5 is pressed!");
-        alarm_active = true;
-        last_tone_change = millis();
-        current_tone_index = 0;
-        buzzerTone(FREQS[0]);
-        digitalWrite(LED_PIN, HIGH);
-      }
-    }
-  }
-
-  // Process Continuous Alarm Siren
-  if (alarm_active) {
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      alarm_active = false;
-      buzzerOff();
-      digitalWrite(LED_PIN, LOW);
-      Serial.println("[ALARM] Dismissed by button on Pin 5!");
-      delay(200);
-    } else {
-      unsigned long now = millis();
-      if (now - last_tone_change > DURATIONS[current_tone_index]) {
-        last_tone_change = now;
-        current_tone_index = (current_tone_index + 1) % NOTE_COUNT;
-        buzzerTone(FREQS[current_tone_index]);
-        digitalWrite(LED_PIN, (current_tone_index % 2 == 0) ? HIGH : LOW);
+        Serial.println("[ALARM] FALL DETECTED — triggering continuous alarm!");
+        triggerAlarm();
       }
     }
   }
 
   delay(10);
+}
+
+// ---- Full alarm sequence (loops until button on Pin 17 is pressed) ----
+void triggerAlarm() {
+  while (true) {
+    for (int i = 0; i < NOTE_COUNT; i++) {
+      // Check if button on GPIO 17 is pressed to stop alarm
+      if (digitalRead(BUTTON_PIN) == LOW) {
+        buzzerOff();
+        digitalWrite(LED_PIN, LOW);
+        Serial.println("[ALARM] Button on Pin 17 pressed! Alarm cancelled.");
+        delay(250); // Debounce
+        return;
+      }
+
+      buzzerTone(FREQS[i]);
+      digitalWrite(LED_PIN, (i % 2 == 0) ? HIGH : LOW);
+      delay(DURATIONS[i]);
+    }
+  }
 }
 
 // ---- 2 short boot beeps ----

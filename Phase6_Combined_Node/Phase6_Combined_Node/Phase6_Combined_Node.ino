@@ -13,7 +13,7 @@ String node_location = "Bath Room"; // Change this before uploading to each node
 // --- ALARM CONFIGURATION ---
 const int LED_PIN = 2;
 const int BUZZER_PIN = 4;
-const int BUTTON_PIN = 5; // Reset / Dismiss Button (Connect Pin 5 to GND when pressed)
+const int BUTTON_PIN = 17; // Push button between GPIO 17 and GND (Active LOW)
 const int BUZZER_FREQ = 2000;
 const int BUZZER_RES_BITS = 8;
 const int FREQS[] = { 1000, 1500, 2000, 2500 }; // 4 tones for the siren
@@ -95,7 +95,7 @@ void setup() {
     // Setup Alarm Pins (ESP32 Arduino Core 3.x API)
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
-    pinMode(BUTTON_PIN, INPUT_PULLUP); // Reset button on Pin 5 (active LOW)
+    pinMode(BUTTON_PIN, INPUT_PULLUP); // Button to acknowledge/stop alarm
     ledcAttach(BUZZER_PIN, BUZZER_FREQ, BUZZER_RES_BITS);
     ledcWriteTone(BUZZER_PIN, 0); // Ensure buzzer is off
     
@@ -140,6 +140,7 @@ void setup() {
     alarm_udp.begin(ALARM_UDP_PORT);
     Serial.println("UDP CSI Command Listener started on port 5000.");
     Serial.println("UDP Alarm Trigger Listener started on port 5005.");
+    Serial.println("Alarm Reset Button active on Pin 17.");
 
     // Enable Promiscuous mode and CSI sniffing (Works alongside STA mode!)
     esp_wifi_set_promiscuous(true);
@@ -188,7 +189,7 @@ void loop() {
             String msg = String(incomingAlarm);
             msg.trim();
             if (msg.startsWith("FALL_ALERT") || msg.startsWith("ALARM_TRIGGER")) {
-                Serial.println("\n[ALARM] Fall Alert Received! Siren activated until Button on Pin 5 is pressed!");
+                Serial.println("\n[ALARM] Fall Alert Received! Triggering Continuous Siren!");
                 alarm_active = true;
                 last_tone_change = millis();
                 current_tone_index = 0;
@@ -198,20 +199,22 @@ void loop() {
         }
     }
 
-    // 3. Process Continuous Alarm Siren (Runs non-stop until reset button Pin 5 is pressed)
+    // 3. Process Non-Blocking Alarm Siren (Runs continuously until Button on Pin 17 is pressed)
     if (alarm_active) {
-        // Check reset button (GPIO 5 pressed = LOW)
+        // Check if button on GPIO 17 is pressed (Active LOW)
         if (digitalRead(BUTTON_PIN) == LOW) {
             alarm_active = false;
             ledcWriteTone(BUZZER_PIN, 0); // Stop buzzer
             digitalWrite(LED_PIN, LOW);   // Turn off LED
-            Serial.println("\n[ALARM] Alarm dismissed by physical button on Pin 5!");
-            delay(200); // Debounce
+            Serial.println("\n[ALARM] Reset button (Pin 17) pressed! Siren silenced.");
+            delay(250); // Simple debounce
         } else {
             unsigned long now = millis();
             if (now - last_tone_change > 100) {
                 last_tone_change = now;
                 current_tone_index = (current_tone_index + 1) % 4;
+                
+                // Continuous siren tone + alternating blink
                 ledcWriteTone(BUZZER_PIN, FREQS[current_tone_index]);
                 digitalWrite(LED_PIN, (current_tone_index % 2 == 0) ? HIGH : LOW);
             }
