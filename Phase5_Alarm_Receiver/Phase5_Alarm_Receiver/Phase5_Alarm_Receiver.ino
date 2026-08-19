@@ -24,6 +24,7 @@ const int HEARTBEAT_INTERVAL = 5000;  // ms between heartbeats
 
 const int LED_PIN    = 2;   // Red LED  (220Ω resistor in series)
 const int BUZZER_PIN = 4;   // Passive buzzer (100Ω resistor in series)
+const int BUTTON_PIN = 5;   // Reset / Dismiss button (Connect Pin 5 to GND when pressed)
 // -----------------------------------
 
 WiFiUDP udpRx;     // Receive alerts
@@ -35,8 +36,10 @@ unsigned long lastHeartbeat = 0;
 const int NOTE_COUNT = 8;
 const int FREQS[NOTE_COUNT]     = {2000, 1700, 1400, 1100, 900, 700, 500, 300};
 const int DURATIONS[NOTE_COUNT] = { 120,  120,  120,  120, 150, 150, 180, 300};
-const int ALARM_REPEAT          = 3;
-const int FINAL_BLINKS          = 10;
+
+bool alarm_active = false;
+unsigned long last_tone_change = 0;
+int current_tone_index = 0;
 
 // ---- helpers ----
 void buzzerTone(int freq) {
@@ -61,6 +64,7 @@ void setup() {
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   ledcAttach(BUZZER_PIN, 2000, 8);
   buzzerOff();
@@ -116,39 +120,36 @@ void loop() {
       Serial.printf("[ALARM] UDP received: %s\n", msg.c_str());
 
       if (msg.startsWith("FALL_ALERT")) {
-        Serial.println("[ALARM] FALL DETECTED — triggering alarm!");
-        triggerAlarm();
+        Serial.println("[ALARM] FALL DETECTED — siren activated until button on Pin 5 is pressed!");
+        alarm_active = true;
+        last_tone_change = millis();
+        current_tone_index = 0;
+        buzzerTone(FREQS[0]);
+        digitalWrite(LED_PIN, HIGH);
+      }
+    }
+  }
+
+  // Process Continuous Alarm Siren
+  if (alarm_active) {
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      alarm_active = false;
+      buzzerOff();
+      digitalWrite(LED_PIN, LOW);
+      Serial.println("[ALARM] Dismissed by button on Pin 5!");
+      delay(200);
+    } else {
+      unsigned long now = millis();
+      if (now - last_tone_change > DURATIONS[current_tone_index]) {
+        last_tone_change = now;
+        current_tone_index = (current_tone_index + 1) % NOTE_COUNT;
+        buzzerTone(FREQS[current_tone_index]);
+        digitalWrite(LED_PIN, (current_tone_index % 2 == 0) ? HIGH : LOW);
       }
     }
   }
 
   delay(10);
-}
-
-// ---- Full alarm sequence ----
-void triggerAlarm() {
-  for (int repeat = 0; repeat < ALARM_REPEAT; repeat++) {
-    for (int i = 0; i < NOTE_COUNT; i++) {
-      buzzerTone(FREQS[i]);
-      digitalWrite(LED_PIN, (i % 2 == 0) ? HIGH : LOW);
-      delay(DURATIONS[i]);
-    }
-    buzzerOff();
-    digitalWrite(LED_PIN, LOW);
-    delay(200);
-  }
-
-  // Final rapid LED flash
-  for (int i = 0; i < FINAL_BLINKS; i++) {
-    digitalWrite(LED_PIN, HIGH);
-    delay(80);
-    digitalWrite(LED_PIN, LOW);
-    delay(80);
-  }
-
-  buzzerOff();
-  digitalWrite(LED_PIN, LOW);
-  Serial.println("[ALARM] Alarm sequence complete.");
 }
 
 // ---- 2 short boot beeps ----

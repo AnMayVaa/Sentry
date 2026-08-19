@@ -8,11 +8,12 @@ const char* ssid = "BUNDAOBUNTAI";
 const char* password = "ohm12345";
 const char* dest_host = "OhmPatumwan"; // Hostname of the Raspberry Pi
 const int dest_port = 5000;
-String node_location = "Living Room"; // Change this before uploading to each node!
+String node_location = "Bath Room"; // Change this before uploading to each node!
 
 // --- ALARM CONFIGURATION ---
 const int LED_PIN = 2;
 const int BUZZER_PIN = 4;
+const int BUTTON_PIN = 5; // Reset / Dismiss Button (Connect Pin 5 to GND when pressed)
 const int BUZZER_FREQ = 2000;
 const int BUZZER_RES_BITS = 8;
 const int FREQS[] = { 1000, 1500, 2000, 2500 }; // 4 tones for the siren
@@ -53,7 +54,6 @@ uint8_t router_mac[6];
 bool alarm_active = false;
 unsigned long last_tone_change = 0;
 int current_tone_index = 0;
-int alarm_loop_count = 0;
 
 // The CSI Callback (Runs in the background Wi-Fi thread on Core 0)
 void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info) {
@@ -95,6 +95,7 @@ void setup() {
     // Setup Alarm Pins (ESP32 Arduino Core 3.x API)
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
+    pinMode(BUTTON_PIN, INPUT_PULLUP); // Reset button on Pin 5 (active LOW)
     ledcAttach(BUZZER_PIN, BUZZER_FREQ, BUZZER_RES_BITS);
     ledcWriteTone(BUZZER_PIN, 0); // Ensure buzzer is off
     
@@ -187,36 +188,30 @@ void loop() {
             String msg = String(incomingAlarm);
             msg.trim();
             if (msg.startsWith("FALL_ALERT") || msg.startsWith("ALARM_TRIGGER")) {
-                Serial.println("\n[ALARM] Fall Alert Received! Triggering Siren!");
+                Serial.println("\n[ALARM] Fall Alert Received! Siren activated until Button on Pin 5 is pressed!");
                 alarm_active = true;
                 last_tone_change = millis();
                 current_tone_index = 0;
-                alarm_loop_count = 0;
                 ledcWriteTone(BUZZER_PIN, FREQS[0]);
                 digitalWrite(LED_PIN, HIGH);
             }
         }
     }
 
-    // 3. Process Non-Blocking Alarm Siren
+    // 3. Process Continuous Alarm Siren (Runs non-stop until reset button Pin 5 is pressed)
     if (alarm_active) {
-        unsigned long now = millis();
-        if (now - last_tone_change > 100) {
-            last_tone_change = now;
-            current_tone_index++;
-            
-            if (current_tone_index >= 4) {
-                current_tone_index = 0;
-                alarm_loop_count++;
-            }
-            
-            // Play for 3 full cycles
-            if (alarm_loop_count >= 3) {
-                alarm_active = false;
-                ledcWriteTone(BUZZER_PIN, 0); // Stop buzzer
-                digitalWrite(LED_PIN, LOW);   // Turn off LED
-                Serial.println("[ALARM] Siren stopped.");
-            } else {
+        // Check reset button (GPIO 5 pressed = LOW)
+        if (digitalRead(BUTTON_PIN) == LOW) {
+            alarm_active = false;
+            ledcWriteTone(BUZZER_PIN, 0); // Stop buzzer
+            digitalWrite(LED_PIN, LOW);   // Turn off LED
+            Serial.println("\n[ALARM] Alarm dismissed by physical button on Pin 5!");
+            delay(200); // Debounce
+        } else {
+            unsigned long now = millis();
+            if (now - last_tone_change > 100) {
+                last_tone_change = now;
+                current_tone_index = (current_tone_index + 1) % 4;
                 ledcWriteTone(BUZZER_PIN, FREQS[current_tone_index]);
                 digitalWrite(LED_PIN, (current_tone_index % 2 == 0) ? HIGH : LOW);
             }
