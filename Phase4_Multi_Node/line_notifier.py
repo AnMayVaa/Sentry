@@ -107,6 +107,7 @@ def send_fall_alert(location_name="Unknown Location"):
             "footer": {
                 "type": "box",
                 "layout": "vertical",
+                "spacing": "sm",
                 "contents": [
                     {
                         "type": "button",
@@ -117,6 +118,15 @@ def send_fall_alert(location_name="Unknown Location"):
                         },
                         "style": "primary",
                         "color": "#ff0000"
+                    },
+                    {
+                        "type": "button",
+                        "action": {
+                            "type": "uri",
+                            "label": "🔕 ปิดเสียงไซเรน (Silence Alarm)",
+                            "uri": "https://csi.ohmpatumwan.com/silence"
+                        },
+                        "style": "secondary"
                     }
                 ]
             }

@@ -47,8 +47,27 @@ def send_alarm_broadcast(location_name: str = "Unknown") -> bool:
         sock.close()
         print(f"[ALARM] Broadcast sent → UDP 255.255.255.255:{ALARM_UDP_PORT} | {message}", flush=True)
         return True
+def send_silence_broadcast() -> bool:
+    """
+    Broadcast a UDP silence command to all alarm receivers on the local network to stop siren/LED.
+    Safe to call from any thread. Never raises an exception.
+    Returns True on success, False on failure.
+    """
+    if not ALARM_ENABLED:
+        print("[ALARM] UDP alarm is disabled in config.json", flush=True)
+        return False
+
+    message = "FALL_SILENCE"
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(1.0)
+        sock.sendto(message.encode("utf-8"), ("255.255.255.255", ALARM_UDP_PORT))
+        sock.close()
+        print(f"[ALARM] Silence broadcast sent → UDP 255.255.255.255:{ALARM_UDP_PORT} | {message}", flush=True)
+        return True
     except Exception as e:
-        print(f"[ALARM] Failed to send UDP broadcast: {e}", flush=True)
+        print(f"[ALARM] Failed to send silence broadcast: {e}", flush=True)
         return False
 
 

@@ -19,7 +19,7 @@ from serial_reader import SerialReader
 from udp_reader import UDPReader
 from ml_engine import extract_features, extract_features_np
 from line_notifier import send_fall_alert
-from alarm_broadcaster import send_alarm_broadcast
+from alarm_broadcaster import send_alarm_broadcast, send_silence_broadcast
 
 # Load Config
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
@@ -323,6 +323,85 @@ class HeadlessBrain:
                 return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "no-cache")], content)
             except Exception as e:
                 return (http.HTTPStatus.INTERNAL_SERVER_ERROR, [], str(e).encode())
+        elif path == "/silence" or path.startswith("/silence"):
+            # Trigger UDP silence broadcast to stop ESP32 alarm sirens
+            threading.Thread(target=send_silence_broadcast, daemon=True).start()
+            html_content = """<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentry IoT - ปิดเสียงไซเรน</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #0f172a;
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .card {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 24px;
+            padding: 40px 24px;
+            text-align: center;
+            max-width: 380px;
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(12px);
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            display: inline-block;
+            animation: bounce 1s ease;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+        h1 {
+            font-size: 22px;
+            margin: 0 0 12px;
+            color: #38bdf8;
+        }
+        p {
+            font-size: 15px;
+            color: #94a3b8;
+            line-height: 1.6;
+            margin: 0 0 28px;
+        }
+        .btn {
+            display: block;
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            color: white;
+            text-decoration: none;
+            padding: 14px 20px;
+            border-radius: 14px;
+            font-weight: bold;
+            font-size: 15px;
+            box-shadow: 0 10px 20px -5px rgba(14, 165, 233, 0.4);
+            transition: transform 0.15s ease;
+        }
+        .btn:active { transform: scale(0.97); }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">🔕</div>
+        <h1>ปิดเสียงไซเรนแล้ว</h1>
+        <p>ระบบ Sentry ได้ส่งสัญญาณปิดเสียงแจ้งเตือนและไฟกระพริบ (Buzzer & LED) ไปยังอุปกรณ์ในพื้นที่เรียบร้อยแล้วครับ</p>
+        <a href="/" class="btn">เปิดหน้า Dashboard</a>
+    </div>
+</body>
+</html>"""
+            return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "no-cache")], html_content.encode("utf-8"))
         elif path == "/ws":
             return None  # Proceed to WebSocket upgrade
         else:
