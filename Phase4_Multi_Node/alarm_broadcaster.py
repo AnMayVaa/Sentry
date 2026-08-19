@@ -47,6 +47,11 @@ def send_alarm_broadcast(location_name: str = "Unknown") -> bool:
         sock.close()
         print(f"[ALARM] Broadcast sent → UDP 255.255.255.255:{ALARM_UDP_PORT} | {message}", flush=True)
         return True
+    except Exception as e:
+        print(f"[ALARM] Failed to send UDP broadcast: {e}", flush=True)
+        return False
+
+
 def send_silence_broadcast() -> bool:
     """
     Broadcast a UDP silence command to all alarm receivers on the local network to stop siren/LED.
