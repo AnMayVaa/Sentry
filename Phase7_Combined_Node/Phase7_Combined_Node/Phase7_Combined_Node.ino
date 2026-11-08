@@ -14,8 +14,17 @@
 // ============================================================
 
 // --- CONFIGURATION ---
-const char* ssid = "BUNDAOBUNTAI";
-const char* password = "ohm12345";
+// Wi-Fi credentials live in secrets.h (git-ignored). Copy secrets.example.h
+// to secrets.h in this folder and fill in your network before uploading.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#warning "secrets.h not found: copy secrets.example.h to secrets.h and set your Wi-Fi"
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#endif
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 const char* dest_host = "OhmPatumwan"; // Hostname of the Raspberry Pi
 const int dest_port = 5000;
 String node_location = "Bath Room"; // Change this before uploading to each node!
@@ -173,8 +182,8 @@ void loop() {
     // 1. Process Incoming Commands from Pi (UDP 5000)
     int packetSize = udp.parsePacket();
     if (packetSize) {
-        char incomingPacket[255];
-        int len = udp.read(incomingPacket, 255);
+        char incomingPacket[256];
+        int len = udp.read(incomingPacket, sizeof(incomingPacket) - 1); // leave room for '\0'
         if (len > 0) {
             incomingPacket[len] = 0;
             String cmd = String(incomingPacket);
@@ -192,8 +201,8 @@ void loop() {
     // 2. Process Incoming Alarm Triggers & Remote Silence (UDP 5005)
     int alarmPacketSize = alarm_udp.parsePacket();
     if (alarmPacketSize) {
-        char incomingAlarm[255];
-        int len = alarm_udp.read(incomingAlarm, 255);
+        char incomingAlarm[256];
+        int len = alarm_udp.read(incomingAlarm, sizeof(incomingAlarm) - 1); // leave room for '\0'
         if (len > 0) {
             incomingAlarm[len] = 0;
             String msg = String(incomingAlarm);
@@ -255,12 +264,19 @@ void loop() {
     // 5. Process CSI Queue - send each packet IMMEDIATELY (no batching!)
     csi_packet_t pkt;
     while (xQueueReceive(csi_queue, &pkt, 0) == pdTRUE && target_resolved) {
-        // Build the string into a buffer first, then send in one shot
-        char txBuf[512];
+        // Build the string into a buffer first, then send in one shot.
+        // Worst case: ~80 byte header + 128 values x 5 chars (",-128") = ~720 bytes,
+        // so 1024 always fits a full frame. (The old 512 buffer could cut frames short,
+        // which the Pi then dropped, and could write 1 byte past the end.)
+        char txBuf[1024];
         int pos = snprintf(txBuf, sizeof(txBuf), "CSI_DATA,%s,%d,%d,%d", node_location.c_str(), pkt.mac[0], pkt.rssi, pkt.len);
-        for (int i = 0; i < pkt.len && pos < (int)sizeof(txBuf) - 5; i++) {
-            pos += snprintf(txBuf + pos, sizeof(txBuf) - pos, ",%d", pkt.buf[i]);
+        bool overflow = (pos < 0 || pos >= (int)sizeof(txBuf) - 2);
+        for (int i = 0; i < pkt.len && !overflow; i++) {
+            int n = snprintf(txBuf + pos, sizeof(txBuf) - pos, ",%d", (int)pkt.buf[i]);
+            if (n < 0 || pos + n >= (int)sizeof(txBuf) - 2) { overflow = true; break; }
+            pos += n;
         }
+        if (overflow) continue; // never send a truncated frame
         txBuf[pos++] = '\n';
         txBuf[pos] = '\0';
 

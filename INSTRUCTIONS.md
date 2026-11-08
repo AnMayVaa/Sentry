@@ -34,8 +34,20 @@ The core logic resides in the `Phase4_Multi_Node` directory:
 The system is accessible globally via the user's domain: `ohmpatumwan.com`.
 Traffic is routed through a Cloudflare Tunnel named `raspi5` (running on the Pi).
 - **Dashboard (HTTP):** Cloudflare routes `https://csi.ohmpatumwan.com` to `http://127.0.0.1:8000` on the Pi.
-- **WebSocket (Data Stream):** Cloudflare routes `wss://csi.ohmpatumwan.com/ws` to `http://127.0.0.1:8765` on the Pi.
+- **WebSocket (Data Stream):** `wss://csi.ohmpatumwan.com/ws` is served by the same unified server on port 8000 (`networking.http_port`). Port 8765 is no longer used by Phase 4.
 *Note: The frontend `index.html` uses dynamic path-based routing (`/ws`) to ensure the WebSocket connection passes through the Cloudflare Proxy correctly without port blocking.*
+
+## 5.1 Secrets & Access Control
+- `config.json` is tracked in a **public** repo, so it must never hold secrets. Put real values in `config.local.json` next to it (git-ignored; copy `config.local.example.json`). Environment variables `SENTRY_LINE_TOKEN`, `SENTRY_LINE_USER_ID`, `SENTRY_CONTROL_TOKEN` and `SENTRY_PUBLIC_URL` override both files.
+- `security.control_token`: when set, every dashboard command that changes the system (threshold, connect/disconnect, TX mode, simulation, test alerts) and the `/silence` link require it. Open the dashboard once as `https://csi.ohmpatumwan.com/?token=YOUR_TOKEN` and the browser remembers it. The LINE "Silence Alarm" button includes the token automatically. Without a token anyone who finds the URL can disable detection.
+- Firmware Wi-Fi credentials go in `Phase7_Combined_Node/Phase7_Combined_Node/secrets.h` (git-ignored; copy `secrets.example.h`).
+- `deploy.py` uses your SSH key, never a stored password. Override host/user/path with `SENTRY_PI_HOST`, `SENTRY_PI_USER`, `SENTRY_PI_PATH`.
+
+## 5.2 Subcarrier Alignment (do not change without retraining)
+The model was trained on `amplitudes[2:28] + amplitudes[38:64]` (52 values) because the training CSVs have one more value per row than header columns and pandas shifts them. `ml_engine.select_subcarriers()` is the single place that picks these; both readers use it. If you retrain with a fixed CSV header, change `select_subcarriers()` at the same time.
+
+## 5.3 Tests
+`python -m pytest Phase4_Multi_Node/tests -q` (from the repo root) checks config loading, the fall state machine, the control token, UDP parsing, and that the shipped model does not report falls on the static/walking recordings.
 
 ## 6. Logic & State Machine
 The system tracks three states: `0=STATIC`, `1=MOVEMENT`, `2=FALL`.

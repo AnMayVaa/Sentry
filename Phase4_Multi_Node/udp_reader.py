@@ -3,6 +3,8 @@ import threading
 import time
 import numpy as np
 
+from ml_engine import select_subcarriers
+
 class UDPReader:
     def __init__(self, port=5000, data_callback=None):
         self.port = port
@@ -96,7 +98,7 @@ class UDPReader:
                                     amplitudes.append(amp)
                                     
                                 # Filter the 52 valid data subcarriers
-                                valid_amplitudes = amplitudes[1:28] + amplitudes[38:64]
+                                valid_amplitudes = select_subcarriers(amplitudes)  # same 52 the model was trained on
                                 
                                 if self.data_callback:
                                     self.data_callback(valid_amplitudes, rssi, location_name, reader_id=addr[0])

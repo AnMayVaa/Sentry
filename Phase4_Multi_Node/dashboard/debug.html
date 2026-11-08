@@ -188,7 +188,17 @@
 
 <script>
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${wsProto}//${location.host}/ws`);
+    // Optional control token (security.control_token on the Pi). Open the page once
+    // as /?token=YOUR_TOKEN and it is remembered in this browser.
+    const sentryToken = (() => {
+        const fromUrl = new URLSearchParams(window.location.search).get('token');
+        try {
+            if (fromUrl) localStorage.setItem('sentry-token', fromUrl);
+            return fromUrl || localStorage.getItem('sentry-token') || '';
+        } catch (e) { return fromUrl || ''; }
+    })();
+    const wsQuery = sentryToken ? `?token=${encodeURIComponent(sentryToken)}` : '';
+    const ws = new WebSocket(`${wsProto}//${location.host}/ws${wsQuery}`);
 
     const dot   = document.getElementById('ws-dot');
     const label = document.getElementById('ws-label');
@@ -220,6 +230,11 @@
 
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
+
+        if (data.type === 'error' && data.error === 'unauthorized') {
+            log('Not authorized: open this page as /debug?token=YOUR_TOKEN');
+            return;
+        }
 
         if (data.type === 'nodes_list') {
             buildNodes(data.nodes);

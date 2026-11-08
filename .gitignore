@@ -17,3 +17,7 @@ sdkconfig.old
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local secrets (never commit)
+config.local.json
+**/secrets.h

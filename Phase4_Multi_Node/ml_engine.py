@@ -11,6 +11,20 @@ WINDOW_SIZE = 45 # 1.5 seconds at 30Hz
 STEP_SIZE = 15   # 0.5 second overlap
 DATA_DIR = "data"
 
+def select_subcarriers(amplitudes):
+    """
+    Pick the 52 subcarriers the model was trained on from the 64 raw amplitudes.
+
+    The training CSVs (livingroom_data/*.csv) hold 53 values per row
+    (amplitudes[1:28] + amplitudes[38:64]) under a 52-column header. pandas
+    then uses the first column as the index, which shifts everything by one,
+    so the model was really trained on amplitudes[2:28] + amplitudes[38:64].
+    Live inference must use the same 52 values, otherwise walking windows are
+    misread as falls (about 40% of walking.csv windows, versus 0% when aligned).
+    """
+    return list(amplitudes[2:28]) + list(amplitudes[38:64])
+
+
 def extract_features(window_df):
     """
     Extract statistical features from a window of CSI data.

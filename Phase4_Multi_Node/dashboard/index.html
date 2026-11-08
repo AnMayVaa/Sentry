@@ -623,7 +623,17 @@
 
         // ─── WebSocket ───────────────────────────────────────────────
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+        // Optional control token (security.control_token on the Pi). Open the page once
+        // as /?token=YOUR_TOKEN and it is remembered in this browser.
+        const sentryToken = (() => {
+            const fromUrl = new URLSearchParams(window.location.search).get('token');
+            try {
+                if (fromUrl) localStorage.setItem('sentry-token', fromUrl);
+                return fromUrl || localStorage.getItem('sentry-token') || '';
+            } catch (e) { return fromUrl || ''; }
+        })();
+        const wsQuery = sentryToken ? `?token=${encodeURIComponent(sentryToken)}` : '';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws${wsQuery}`);
 
         ws.onopen = () => {
             const el = document.getElementById('connection-status');
@@ -895,6 +905,13 @@
         // ─── WS MESSAGE ──────────────────────────────────────────────
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
+
+            if (data.type === 'error' && data.error === 'unauthorized') {
+                alert(currentLang === 'th'
+                    ? 'ไม่มีสิทธิ์ควบคุมระบบ: เปิดหน้านี้ด้วย /?token=รหัสของคุณ'
+                    : 'Not authorized to change settings: open this page as /?token=YOUR_TOKEN');
+                return;
+            }
 
             if (data.type === 'config') {
                 syncTxUI(data.tx_mode || 'TX_ROUTER');

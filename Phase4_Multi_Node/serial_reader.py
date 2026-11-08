@@ -3,6 +3,8 @@ import threading
 import time
 import numpy as np
 
+from ml_engine import select_subcarriers
+
 class SerialReader:
     def __init__(self, port, baudrate=115200, data_callback=None):
         self.port = port
@@ -75,7 +77,7 @@ class SerialReader:
                             # Index 28-37: Null/Guard subcarriers (zero dip)
                             # Index 38-63: Negative subcarriers
                             # We filter out the bad ones to keep the 52 usable data subcarriers!
-                            valid_amplitudes = amplitudes[1:28] + amplitudes[38:64]
+                            valid_amplitudes = select_subcarriers(amplitudes)  # same 52 the model was trained on
                             
                             if self.data_callback:
                                 self.data_callback(valid_amplitudes, rssi, location_name)

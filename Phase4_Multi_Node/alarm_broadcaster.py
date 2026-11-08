@@ -13,19 +13,11 @@ Design principles:
 """
 
 import socket
-import json
-import os
 
-# Load config
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
-try:
-    with open(CONFIG_PATH, "r") as f:
-        _config = json.load(f)
-    ALARM_UDP_PORT = _config.get("alarm", {}).get("udp_port", 5005)
-    ALARM_ENABLED  = _config.get("alarm", {}).get("enabled", True)
-except Exception:
-    ALARM_UDP_PORT = 5005
-    ALARM_ENABLED  = True
+from config_loader import CONFIG
+
+ALARM_UDP_PORT = int(CONFIG["alarm"].get("udp_port", 5005))
+ALARM_ENABLED = bool(CONFIG["alarm"].get("enabled", True))
 
 
 def send_alarm_broadcast(location_name: str = "Unknown") -> bool:

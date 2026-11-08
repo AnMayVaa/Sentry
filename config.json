@@ -1,23 +1,23 @@
 {
-    "wifi": {
-        "ssid": "YOUR_WIFI_SSID",
-        "password": "YOUR_WIFI_PASSWORD"
-    },
+    "_comment": "Tracked in git (public). Never put secrets here: copy config.local.example.json to config.local.json (git-ignored) and put tokens there.",
     "networking": {
         "udp_receiver_port": 5000,
         "websocket_port": 8765,
         "http_port": 8000
     },
     "ai_settings": {
-        "variance_threshold": 2.0,
-        "noise_gate_active": true
+        "variance_threshold": 2.0
     },
     "notifications": {
-        "line_channel_access_token": "tRFzbLoF/dMFlqeP/4m4VA7Ah3tm0T1chOZ8AamyugI1xO6LopErPO0GyqLR488I3816yOcG0V5IzkVQi2hp+iIJ09XDofCEZBQFU7bscnCU9xjsHXt2CX00BYSqq1yIqcFR8tDZGhyH+359g5G3gAdB04t89/1O/w1cDnyilFU=",
-        "line_user_id": "Uc6dede4107b73b7f50a1f60d10d39f96"
+        "line_channel_access_token": "",
+        "line_user_id": "",
+        "public_url": "https://csi.ohmpatumwan.com"
     },
     "alarm": {
         "enabled": true,
         "udp_port": 5005
+    },
+    "security": {
+        "control_token": ""
     }
 }
