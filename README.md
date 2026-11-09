@@ -16,6 +16,7 @@ The system leverages a Custom Hardware Pipeline (ESP32), a Hybrid Sequence State
 - **mDNS Auto-Discovery:** The ESP32 receiver dynamically resolves the Raspberry Pi's hostname on the local network, making the wireless UDP system completely immune to DHCP IP address changes.
 - **Zero-Lag Architecture:** Pandas overhead was stripped in favor of raw NumPy arrays, and ESP32 UART bottlenecks were removed using single-call buffer writes, allowing 30fps real-time inference without frame backlog.
 - **Home Router TX Mode:** Repurposes the existing home Wi-Fi router as the CSI transmitter via persistent UDP stimulation, eliminating the need for a dedicated TX ESP32 node.
+- **Alert Station + SOS Button (Phase 8):** Caregiver Alert Stations (ESP32 + buzzer + LED + button) ring together on any fall or SOS, with different rhythms for each. Holding the RX node's button for 2 seconds sends an SOS that reaches the stations directly, even if the Pi or internet is down. 3D-printable enclosures and a desk stand are included.
 - **Multi-Node Architecture:** Scales infinitely to support multiple ESP32 receivers across an entire house (e.g., Living Room, Bath Room). Each node features isolated, per-room sensitivity tuning and auto-discovers via UDP subnet broadcasting (`255.255.255.255`) and asynchronous USB polling.
 
 ## Project Structure
@@ -23,6 +24,7 @@ The system leverages a Custom Hardware Pipeline (ESP32), a Hybrid Sequence State
 - `/Phase4_Multi_Node`: Contains the modern headless Edge Compute backend (`headless_brain.py`), the responsive Glassmorphism Universal Web UI (`dashboard/index.html`), and the ultimate God Firmware.
 - `/tx_node`: ESP32 Transmitter firmware (injects high-speed OFDM packets and acts as the SOS button).
 - `/rx_node`: ESP32 Receiver firmware (Promiscuous mode Wi-Fi sniffer).
+- `/Phase8_Next_Phase`: Alert Station firmware, RX node firmware with the hold-to-SOS button, PC firmware tests, and 3D-printable enclosures (OpenSCAD sources, STL, PNG previews). Guide: [`docs/Phase8_Alert_Station_SOS_Enclosures.md`](docs/Phase8_Alert_Station_SOS_Enclosures.md).
 - `/docs/scripts`: Python scripts for generating academic poster graphs and running the Mycelium Simulator.
 - `/docs/images`: Exported data visualization graphs (e.g., CSI Signal Signatures).
 

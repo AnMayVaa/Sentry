@@ -1,0 +1,1 @@
+-std=gnu++17 -Wall -Wextra -Wno-unused-parameter -Wno-cpp -Wno-missing-field-initializers -Imock
