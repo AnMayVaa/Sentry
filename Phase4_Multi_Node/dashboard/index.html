@@ -811,7 +811,12 @@
                 };
                 stateBox.innerText = stateLabels[currentLang][data.state] || 'STATIC';
 
-                if      (data.state === 2) { statePanel.classList.add('state-fall');     this.sessionFalls++;     document.getElementById(`stat-falls-${this.sid}`).innerText = this.sessionFalls; }
+                if (data.sos) {
+                    // Phase 8: SOS button was held on this node in the last 30 s
+                    stateBox.innerText = currentLang === 'th' ? 'ขอความช่วยเหลือ (SOS)!' : 'SOS PRESSED!';
+                    statePanel.classList.add('state-fall');
+                }
+                else if (data.state === 2) { statePanel.classList.add('state-fall');     this.sessionFalls++;     document.getElementById(`stat-falls-${this.sid}`).innerText = this.sessionFalls; }
                 else if (data.state === 1) { statePanel.classList.add('state-movement'); this.sessionMovements++;  document.getElementById(`stat-moves-${this.sid}`).innerText = this.sessionMovements; }
                 else                       { statePanel.classList.add('state-static'); }
 

@@ -19,8 +19,40 @@ def silence_url():
     return url
 
 
-def send_fall_alert(location_name="Unknown Location"):
-    print(f"[LINE_NOTIFIER] Attempting to send alert for {location_name}...", flush=True)
+# Text for each alert kind. "fall" comes from the CSI model, "sos" from someone
+# holding the SOS button on a node (Phase 8).
+ALERT_TEXT = {
+    "fall": {
+        "alt": "🚨 EMERGENCY: Fall Detected in {loc}!",
+        "header": "🚨 EMERGENCY ALERT",
+        "title": "FALL DETECTED IN: {loc}",
+        "body": "The invisible Wi-Fi CSI system has detected a potential fall.",
+        "color": "#ff0000",
+    },
+    "sos": {
+        "alt": "🆘 SOS: Help requested in {loc}!",
+        "header": "🆘 SOS BUTTON PRESSED",
+        "title": "HELP REQUESTED IN: {loc}",
+        "body": "Someone held the SOS button on the Sentry node. Please check on them now.",
+        "color": "#e11d48",
+    },
+}
+
+
+def build_alert_message(location_name, kind="fall", now=None):
+    """Return the LINE Flex message dict for a fall or SOS alert."""
+    text = ALERT_TEXT[kind]
+    current_time = (now or datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    loc_upper = location_name.upper()
+    return _flex(text, location_name, loc_upper, current_time)
+
+
+def send_sos_alert(location_name="Unknown Location"):
+    return send_fall_alert(location_name, kind="sos")
+
+
+def send_fall_alert(location_name="Unknown Location", kind="fall"):
+    print(f"[LINE_NOTIFIER] Attempting to send {kind} alert for {location_name}...", flush=True)
     if not (is_configured(LINE_CHANNEL_ACCESS_TOKEN) and is_configured(LINE_USER_ID)):
         print("[LINE_NOTIFIER] LINE Alert Disabled: set line_channel_access_token and line_user_id "
               "in config.local.json (or SENTRY_LINE_TOKEN / SENTRY_LINE_USER_ID)", flush=True)
@@ -33,12 +65,30 @@ def send_fall_alert(location_name="Unknown Location"):
         "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
     }
     
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    flex_message = build_alert_message(location_name, kind)
+
+    payload = {
+        "to": LINE_USER_ID,
+        "messages": [flex_message]
+    }
     
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=LINE_TIMEOUT_S)
+        if response.status_code == 200:
+            print("[LINE_NOTIFIER] Successfully sent LINE Flex Message!", flush=True)
+            return True
+        else:
+            print(f"[LINE_NOTIFIER] Failed to send LINE message: {response.status_code} - {response.text}", flush=True)
+            return False
+    except Exception as e:
+        print(f"[LINE_NOTIFIER] Error connecting to LINE API: {e}", flush=True)
+        return False
+
+def _flex(text, location_name, loc_upper, current_time):
     # Beautiful Flex Message Card for NSC Judges
-    flex_message = {
+    return {
         "type": "flex",
-        "altText": f"🚨 EMERGENCY: Fall Detected in {location_name}!",
+        "altText": text["alt"].format(loc=location_name),
         "contents": {
             "type": "bubble",
             "header": {
@@ -47,13 +97,13 @@ def send_fall_alert(location_name="Unknown Location"):
                 "contents": [
                     {
                         "type": "text",
-                        "text": "🚨 EMERGENCY ALERT",
+                        "text": text["header"],
                         "weight": "bold",
                         "color": "#ffffff",
                         "size": "xl"
                     }
                 ],
-                "backgroundColor": "#ff0000"
+                "backgroundColor": text["color"]
             },
             "body": {
                 "type": "box",
@@ -61,15 +111,15 @@ def send_fall_alert(location_name="Unknown Location"):
                 "contents": [
                     {
                         "type": "text",
-                        "text": f"FALL DETECTED IN: {location_name.upper()}",
+                        "text": text["title"].format(loc=loc_upper),
                         "weight": "bold",
                         "size": "xl",
                         "wrap": True,
-                        "color": "#ff0000"
+                        "color": text["color"]
                     },
                     {
                         "type": "text",
-                        "text": "The invisible Wi-Fi CSI system has detected a potential fall.",
+                        "text": text["body"],
                         "wrap": True,
                         "margin": "md"
                     },
@@ -137,22 +187,6 @@ def send_fall_alert(location_name="Unknown Location"):
         }
     }
     
-    payload = {
-        "to": LINE_USER_ID,
-        "messages": [flex_message]
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=LINE_TIMEOUT_S)
-        if response.status_code == 200:
-            print("[LINE_NOTIFIER] Successfully sent LINE Flex Message!", flush=True)
-            return True
-        else:
-            print(f"[LINE_NOTIFIER] Failed to send LINE message: {response.status_code} - {response.text}", flush=True)
-            return False
-    except Exception as e:
-        print(f"[LINE_NOTIFIER] Error connecting to LINE API: {e}", flush=True)
-        return False
 
 # For manual testing
 if __name__ == "__main__":

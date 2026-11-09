@@ -100,6 +100,8 @@ def alerts(monkeypatch):
     sent = []
     monkeypatch.setattr(hb, "send_fall_alert", lambda loc: sent.append(("line", loc)))
     monkeypatch.setattr(hb, "send_alarm_broadcast", lambda loc: sent.append(("alarm", loc)))
+    monkeypatch.setattr(hb, "send_sos_alert", lambda loc: sent.append(("sos_line", loc)))
+    monkeypatch.setattr(hb, "send_sos_broadcast", lambda loc: sent.append(("sos_alarm", loc)))
     return sent
 
 
@@ -133,12 +135,99 @@ def test_walking_only_never_alerts(alerts):
     assert alerts == []
 
 
-def test_sos_alerts_with_cooldown(alerts):
+def test_sos_retries_count_as_one_alert(alerts):
+    brain = make_brain()
+    for _ in range(3):  # the node sends each SOS 3 times
+        brain.data_received("SOS", 0, "Room", reader_id="10.0.0.2")
+    time.sleep(0.05)
+    assert sorted(alerts) == [("sos_alarm", "[10.0.0.2] Room"), ("sos_line", "[10.0.0.2] Room")]
+
+
+def test_new_sos_after_dedupe_window_alerts_again(alerts):
     brain = make_brain()
     brain.data_received("SOS", 0, "Room", reader_id="10.0.0.2")
+    brain.nodes["[10.0.0.2] Room"].last_sos_time -= hb.SOS_DEDUPE_S + 1
     brain.data_received("SOS", 0, "Room", reader_id="10.0.0.2")
     time.sleep(0.05)
-    assert [a for a in alerts if a[0] == "line"] == [("line", "[10.0.0.2] Room")]
+    assert [a for a in alerts if a[0] == "sos_line"] == [("sos_line", "[10.0.0.2] Room")] * 2
+
+
+def test_sos_does_not_block_a_following_fall_alert(alerts):
+    brain = make_brain()
+    brain.data_received("SOS", 0, "Room", reader_id="10.0.0.2")
+    rng = np.random.default_rng(0)
+    brain.ml_model.next = 2
+    feed(brain, 80, lambda i: list(20 + rng.normal(0, 5, 53)))
+    brain.ml_model.next = 0
+    feed(brain, 80, lambda i: [20.0] * 53)
+    assert ("line", "[10.0.0.2] Room") in alerts
+    assert ("alarm", "[10.0.0.2] Room") in alerts
+
+
+@pytest.mark.parametrize("line,expected", [
+    ("SOS_ALERT,Bath Room", "Bath Room"),
+    ("SOS_ALERT:Bath Room", "Bath Room"),
+    ("SOS_ALERT", "Unknown"),
+    ("SOS_ALERT,", "Unknown"),
+    ("CSI_DATA,Room,1,2,3", None),
+    ("HEARTBEAT", None),
+])
+def test_parse_sos_line(line, expected):
+    from udp_reader import parse_sos_line
+    assert parse_sos_line(line) == expected
+
+
+def test_udp_reader_turns_sos_packet_into_callback():
+    import socket
+    from udp_reader import UDPReader
+    got = []
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    reader = UDPReader(port, lambda *a, **k: got.append((a, k)))
+    assert reader.connect()
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tx:
+            tx.sendto(b"SOS_ALERT,Bath Room\n", ("127.0.0.1", port))
+        for _ in range(50):
+            if got:
+                break
+            time.sleep(0.05)
+    finally:
+        reader.disconnect()
+    assert got == [(("SOS", 0, "Bath Room"), {"reader_id": "127.0.0.1"})]
+
+
+def test_alarm_broadcast_messages(monkeypatch):
+    import alarm_broadcaster as ab
+    sent = []
+
+    class FakeSock:
+        def __init__(self, *a): pass
+        def setsockopt(self, *a): pass
+        def settimeout(self, *a): pass
+        def sendto(self, data, addr): sent.append((data.decode(), addr))
+        def close(self): pass
+
+    monkeypatch.setattr(ab.socket, "socket", FakeSock)
+    monkeypatch.setattr(ab, "ALARM_ENABLED", True)
+    assert ab.send_alarm_broadcast("Bath Room")
+    assert ab.send_sos_broadcast("Bath Room")
+    assert ab.send_silence_broadcast()
+    port = ab.ALARM_UDP_PORT
+    assert sent == [("FALL_ALERT:Bath Room", ("255.255.255.255", port)),
+                    ("SOS_ALERT:Bath Room", ("255.255.255.255", port)),
+                    ("FALL_SILENCE", ("255.255.255.255", port))]
+
+
+def test_line_sos_message_differs_from_fall():
+    import line_notifier as ln
+    fall = ln.build_alert_message("Bath Room", "fall")
+    sos = ln.build_alert_message("Bath Room", "sos")
+    assert "Fall" in fall["altText"] and "SOS" in sos["altText"]
+    assert sos["contents"]["body"]["contents"][0]["text"] == "HELP REQUESTED IN: BATH ROOM"
+    # both keep the call-ambulance and silence buttons
+    assert [b["action"]["type"] for b in sos["contents"]["footer"]["contents"]] == ["uri", "uri"]
 
 
 def test_new_node_inherits_current_global_threshold():

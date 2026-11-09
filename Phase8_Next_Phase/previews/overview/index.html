@@ -1,0 +1,278 @@
+<title>Fall Detector Phase 8</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: an infographic poster that reads top to bottom: what it is, how a signal travels,
+   what each button and sound means, the hardware, the boxes, the proof, the demo run. */
+:root {
+  --bg: #f2f3f1; --card: #ffffff; --ink: #161a1e; --muted: #5d6670; --line: #d9ddd8;
+  --fall: #d7262e; --sos: #e07a00; --ok: #1f8a4c; --wire: #2f6fb0; --soft: #e8ebe6;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111417; --card: #191e23; --ink: #eceff1; --muted: #9aa4ad; --line: #2b333b;
+  --fall: #ff5a5f; --sos: #ffa23a; --ok: #46c27f; --wire: #6aa8ea; --soft: #20262c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111417; --card: #191e23; --ink: #eceff1; --muted: #9aa4ad; --line: #2b333b;
+  --fall: #ff5a5f; --sos: #ffa23a; --ok: #46c27f; --wire: #6aa8ea; --soft: #20262c; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--display); line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+h1 { font-size: clamp(30px, 5.2vw, 54px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.02; margin: 0; text-wrap: balance; }
+h2 { font-size: clamp(20px, 2.6vw, 26px); font-weight: 800; margin: 0 0 12px; letter-spacing: -0.01em; text-wrap: balance; }
+h3 { font-size: 16px; margin: 0 0 6px; }
+p { margin: 0; }
+.lede { color: var(--muted); font-size: 17px; max-width: 62ch; margin-top: 10px; }
+.label { font: 600 11px var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); } }
+.hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; align-items: center; }
+@media (max-width: 820px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.duo figure { margin: 0; text-align: center; }
+.duo img { width: 100%; height: auto; border-radius: 10px; background: var(--soft); }
+.duo figcaption { font: 12px var(--mono); color: var(--muted); margin-top: 4px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.stat { border-left: 3px solid var(--ink); padding: 2px 0 2px 10px; }
+.stat b { display: block; font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--muted); }
+@media (max-width: 480px) { .stats { grid-template-columns: minmax(0, 1fr); } }
+.scroll { overflow-x: auto; }
+svg text { font-family: var(--display); }
+.chip { display: inline-block; font: 600 12px var(--mono); padding: 2px 8px; border-radius: 99px; border: 1px solid currentColor; }
+.fall { color: var(--fall); } .sos { color: var(--sos); } .ok { color: var(--ok); }
+ol.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: s; }
+ol.steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; counter-increment: s; }
+ol.steps li::before { content: counter(s); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font: 600 13px var(--mono); background: var(--soft); color: var(--ink); }
+ol.steps.fall li::before { background: var(--fall); color: var(--card); }
+ol.steps.sos li::before { background: var(--sos); color: var(--card); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+td.k { font-weight: 600; white-space: nowrap; }
+.rhythm { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.rhythm .n { font-weight: 600; font-size: 14px; }
+.rhythm small { display: block; color: var(--muted); font: 11px var(--mono); }
+.pins { font: 13px/1.7 var(--mono); background: var(--soft); border-radius: 10px; padding: 14px 16px; overflow-x: auto; white-space: pre; }
+.specs { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; font-size: 14px; margin: 0; }
+.specs dt { color: var(--muted); } .specs dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+.proof b { font-size: 34px; font-weight: 900; display: block; font-variant-numeric: tabular-nums; color: var(--ok); }
+.check { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.check li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; }
+.check li::before { content: ""; width: 16px; height: 16px; border: 2px solid var(--muted); border-radius: 4px; margin-top: 3px; }
+.warn { border-left: 3px solid var(--sos); }
+a { color: var(--wire); }
+a:focus-visible { outline: 2px solid var(--wire); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div>
+      <div class="label">Wi-Fi fall detector · next phase</div>
+      <h1>A fall or an SOS now rings in every room.</h1>
+      <p class="lede">Phase 8 adds a caregiver <strong>alert station</strong>, a <strong>hold-to-SOS button</strong> on the RX node, and printable boxes for both. A fall still sends a LINE card. Now the caregiver also hears it in the house.</p>
+      <div class="stats">
+        <div class="stat"><b>2 s</b><span>hold the button for SOS</span></div>
+        <div class="stat"><b>All</b><span>stations ring at once</span></div>
+        <div class="stat"><b>0</b><span>Pi needed for an SOS to ring</span></div>
+      </div>
+    </div>
+    <div class="duo">
+      <figure><img src="rx_node_assembled.png" alt="RX node box with antenna, button and LED" width="900" height="737"><figcaption>RX node</figcaption></figure>
+      <figure><img src="alert_station_assembled.png" alt="Alert station box with light dome and button" width="900" height="737"><figcaption>Alert station</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>How an alert travels</h2>
+    <div class="scroll">
+      <svg viewBox="0 0 1000 330" width="100%" style="min-width:680px" role="img" aria-label="RX node sends CSI and SOS to the Raspberry Pi, the Pi sends LINE cards and broadcasts to alert stations, and the RX node also broadcasts SOS straight to the alert stations">
+        <defs>
+          <marker id="aF" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--fall)"/></marker>
+          <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--sos)"/></marker>
+          <marker id="aW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--wire)"/></marker>
+        </defs>
+        <!-- boxes -->
+        <g>
+          <rect x="20" y="40" width="200" height="110" rx="12" fill="var(--soft)" stroke="var(--line)"/>
+          <text x="120" y="78" text-anchor="middle" font-weight="800" font-size="20" fill="var(--ink)">RX node</text>
+          <text x="120" y="102" text-anchor="middle" font-size="13" fill="var(--muted)">senses Wi-Fi CSI</text>
+          <text x="120" y="122" text-anchor="middle" font-size="13" fill="var(--muted)">SOS button · siren</text>
+
+          <rect x="400" y="40" width="200" height="110" rx="12" fill="var(--soft)" stroke="var(--line)"/>
+          <text x="500" y="78" text-anchor="middle" font-weight="800" font-size="20" fill="var(--ink)">Raspberry Pi 5</text>
+          <text x="500" y="102" text-anchor="middle" font-size="13" fill="var(--muted)">fall model · dashboard</text>
+          <text x="500" y="122" text-anchor="middle" font-size="13" fill="var(--muted)">LINE · broadcasts</text>
+
+          <rect x="780" y="40" width="200" height="110" rx="12" fill="var(--soft)" stroke="var(--line)"/>
+          <text x="880" y="78" text-anchor="middle" font-weight="800" font-size="20" fill="var(--ink)">Caregiver phone</text>
+          <text x="880" y="102" text-anchor="middle" font-size="13" fill="var(--muted)">LINE card</text>
+          <text x="880" y="122" text-anchor="middle" font-size="13" fill="var(--muted)">Call 1669 · Silence</text>
+
+          <rect x="400" y="220" width="580" height="90" rx="12" fill="var(--soft)" stroke="var(--line)"/>
+          <text x="690" y="256" text-anchor="middle" font-weight="800" font-size="20" fill="var(--ink)">Alert stations (any number)</text>
+          <text x="690" y="282" text-anchor="middle" font-size="13" fill="var(--muted)">all ring together until someone presses the button or taps Silence in LINE</text>
+        </g>
+        <!-- arrows -->
+        <path d="M220 80 H396" stroke="var(--wire)" stroke-width="3" fill="none" marker-end="url(#aW)"/>
+        <text x="308" y="70" text-anchor="middle" font-size="12" fill="var(--wire)">CSI frames · UDP 5000</text>
+        <path d="M220 115 H396" stroke="var(--sos)" stroke-width="3" fill="none" marker-end="url(#aS)"/>
+        <text x="308" y="135" text-anchor="middle" font-size="12" fill="var(--sos)">SOS ×3 copies</text>
+        <path d="M600 95 H776" stroke="var(--fall)" stroke-width="3" fill="none" marker-end="url(#aF)"/>
+        <text x="688" y="85" text-anchor="middle" font-size="12" fill="var(--fall)">fall card / SOS card</text>
+        <path d="M500 150 V216" stroke="var(--fall)" stroke-width="3" fill="none" marker-end="url(#aF)"/>
+        <text x="512" y="190" font-size="12" fill="var(--fall)">FALL / SOS · broadcast 5005</text>
+        <path d="M120 150 V265 H396" stroke="var(--sos)" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#aS)"/>
+        <text x="132" y="253" font-size="12" fill="var(--sos)">SOS straight to the stations</text>
+        <text x="132" y="292" font-size="12" fill="var(--muted)">works even if the Pi or internet is down</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2><span class="chip fall">FALL</span> When someone falls</h2>
+      <ol class="steps fall">
+        <li><span>The RX node streams Wi-Fi CSI to the Pi about 30 times a second.</span></li>
+        <li><span>The Pi's model sees the impact, then stillness, and calls it a fall.</span></li>
+        <li><span>The caregiver gets the red LINE fall card with <em>Call 1669</em> and <em>Silence</em>.</span></li>
+        <li><span>Every alert station and the RX node start fast beeping until silenced.</span></li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2><span class="chip sos">SOS</span> When someone needs help</h2>
+      <ol class="steps sos">
+        <li><span>They hold the RX button for 2 seconds. The LED lights while they hold.</span></li>
+        <li><span>3 quick chirps confirm it went out. The node sends it 3 times in case a packet drops.</span></li>
+        <li><span>The alert stations play SOS in Morse, straight from the node.</span></li>
+        <li><span>The Pi sends a separate 🆘 LINE card and the dashboard shows <strong>SOS PRESSED!</strong></span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2>What the button does</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Device</th><th>When</th><th>Press</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td class="k" rowspan="3">RX node</td><td>Idle</td><td>Hold 2 s</td><td><span class="sos">SOS</span> to Pi and stations</td></tr>
+            <tr><td>Idle</td><td>Short</td><td>Status chirp (1 = Wi-Fi OK)</td></tr>
+            <tr><td>Ringing</td><td>Any</td><td>Silences this node at once; no SOS</td></tr>
+            <tr><td class="k" rowspan="3">Alert station</td><td>Ringing</td><td>Any</td><td>Silences this station</td></tr>
+            <tr><td>Idle</td><td>Hold 2 s</td><td>Self-test beep</td></tr>
+            <tr><td>Idle</td><td>Short</td><td>Status chirp</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>What each sound means</h2>
+      <div class="rhythm" id="rhythms"></div>
+      <p class="label" style="margin-top:12px">bars drawn to scale · 1.6 s shown</p>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2>Wiring (same on both devices)</h2>
+<div class="pins">GPIO 2  ──[220 Ω]──▶|── GND   red LED
+GPIO 4  ──── (+) buzzer (–) ── GND  active buzzer
+GPIO 17 ──── button ──── GND        12×12 switch
+                                     (internal pull-up)</div>
+      <p style="margin-top:10px;font-size:14px;color:var(--muted)">220 Ω gives the LED about 6 mA. For a louder buzzer in a noisy hall, drive it from 5 V through an S8050 transistor with a 1 kΩ base resistor.</p>
+    </div>
+    <div class="card">
+      <h2>Antennas</h2>
+      <dl class="specs">
+        <dt>Board</dt><dd>ESP32-WROOM-32U (IPEX socket)</dd>
+        <dt>RX node</dt><dd>2.4 GHz antenna outside on SMA: helps CSI sensing</dd>
+        <dt>Alert station</dt><dd>no outside antenna; keep the small one plugged in inside</dd>
+        <dt>Why inside</dt><dd>a 32U has no built-in antenna, so it needs one to join Wi-Fi</dd>
+        <dt>Option</dt><dd>alert_station_base_antenna_hole.stl if you want it outside</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>The boxes</h2>
+    <div class="grid3">
+      <div>
+        <div class="label">Size</div>
+        <p style="font:600 22px var(--mono)">72.8 × 72.8 × 35.8</p>
+        <p style="color:var(--muted);font-size:14px">mm, same for both devices, so one stand and one screw set fit both</p>
+      </div>
+      <div>
+        <div class="label">Print</div>
+        <p style="font-size:15px">PLA or PETG · 0.2 mm layers · 3 walls · 20 % infill · <strong>no supports</strong> · fits a 220 mm bed</p>
+      </div>
+      <div>
+        <div class="label">Mount</div>
+        <p style="font-size:15px">Table (rubber feet) · wall (2 keyholes, 32 mm apart) · 20° desk stand · tape</p>
+      </div>
+    </div>
+    <p style="margin-top:14px;font-size:14px;color:var(--muted)">No brand name on any part: the lid only carries a Wi-Fi mark and the button label. Turn the boxes around in the <a href="../viewer/index.html">3D viewer</a>.</p>
+  </section>
+
+  <section class="grid3">
+    <div class="card proof"><b>35 / 35</b><h3>Pi tests</h3><p style="color:var(--muted);font-size:14px">SOS copies count once, SOS never blocks a fall alert, both message formats parse.</p></div>
+    <div class="card proof"><b>31 / 31</b><h3>Firmware tests</h3><p style="color:var(--muted);font-size:14px">The real sketches run on a PC with simulated buttons, buzzer, time and Wi-Fi.</p></div>
+    <div class="card proof"><b>9 / 9</b><h3>Print files checked</h3><p style="color:var(--muted);font-size:14px">Closed and manifold, no supports, and no parts collide when assembled.</p></div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2>Demo-day run</h2>
+      <ul class="check">
+        <li><span>Power the Pi, then the stations, then the RX node. Each beeps twice on Wi-Fi.</span></li>
+        <li><span>Hold the RX button 2 s: chirps, Morse on the stations, LINE SOS card.</span></li>
+        <li><span>Press each button to silence it.</span></li>
+        <li><span>Do a fall: fast beeps everywhere and the LINE fall card. Tap Silence.</span></li>
+        <li><span>Unplug the Pi and hold the RX button again: the stations still ring.</span></li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h2>Before you print and flash</h2>
+      <ul class="check">
+        <li><span>Compile both sketches once in the Arduino IDE (ESP32 core 3.x).</span></li>
+        <li><span>Measure the ESP32 board: the box expects 52 × 28.5 mm.</span></li>
+        <li><span>Print one lid first and check the button and LED fit.</span></li>
+        <li><span>Put your Wi-Fi in secrets.h; it never goes to GitHub.</span></li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<script>
+// Sound rhythms drawn to scale from the firmware's own patterns (ms, on/off alternating)
+(function () {
+  const W = 1600; // ms shown
+  const rows = [
+    ['Fall', 'fast, nonstop', [150, 100], true, 'var(--fall)'],
+    ['SOS', 'Morse ··· ––– ···', [150,150,150,150,150,450,450,150,450,150,450,450,150,150,150,150,150,1050], true, 'var(--sos)'],
+    ['Sent', '3 chirps after SOS', [80,80,80,80,80,300], false, 'var(--ok)'],
+    ['Test', 'station self-test', [1000,200], false, 'var(--wire)']
+  ];
+  const box = document.getElementById('rhythms');
+  rows.forEach(([name, sub, steps, loop, color]) => {
+    let t = 0, i = 0, rects = '';
+    while (t < W) {
+      const d = steps[i % steps.length];
+      if (i % 2 === 0) rects += `<rect x="${(t / W * 400).toFixed(1)}" y="2" width="${(Math.min(d, W - t) / W * 400).toFixed(1)}" height="20" rx="2" fill="${color}"/>`;
+      t += d; i++;
+      if (!loop && i >= steps.length) break;
+    }
+    box.insertAdjacentHTML('beforeend',
+      `<div class="n">${name}<small>${sub}</small></div>
+       <svg viewBox="0 0 400 24" width="100%" height="24" role="img" aria-label="${name} rhythm"><rect x="0" y="11" width="400" height="2" fill="var(--line)"/>${rects}</svg>`);
+  });
+})();
+</script>

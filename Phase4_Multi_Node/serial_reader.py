@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 from ml_engine import select_subcarriers
+from udp_reader import parse_sos_line
 
 class SerialReader:
     def __init__(self, port, baudrate=115200, data_callback=None):
@@ -46,9 +47,8 @@ class SerialReader:
             try:
                 line = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 
-                if line.startswith("SOS_ALERT"):
-                    parts = line.split(',')
-                    location_name = parts[1] if len(parts) > 1 else "Unknown"
+                location_name = parse_sos_line(line)
+                if location_name is not None:
                     if self.data_callback:
                         self.data_callback("SOS", 0, location_name)
                     continue
