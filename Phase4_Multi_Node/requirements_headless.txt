@@ -1,7 +1,9 @@
 pyserial==3.5
-numpy==1.26.4
-pandas==2.2.1
-joblib==1.4.2
-scikit-learn==1.4.2
+numpy>=1.26,<3
+pandas>=2.2,<3
+joblib>=1.4
+# Must match the version that pickled fall_detection_model.pkl (1.8.0)
+scikit-learn==1.8.0
+# headless_brain.py uses the legacy websockets API (process_request(path, headers)); do not upgrade past 12.x
 websockets==12.0
 requests==2.31.0

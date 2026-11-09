@@ -13,6 +13,9 @@ import websockets
 import http.server
 import socketserver
 import functools
+import hmac
+import math
+from urllib.parse import urlsplit, parse_qs
 
 import serial.tools.list_ports
 from serial_reader import SerialReader
@@ -21,19 +24,58 @@ from ml_engine import extract_features, extract_features_np
 from line_notifier import send_fall_alert
 from alarm_broadcaster import send_alarm_broadcast, send_silence_broadcast
 
-# Load Config
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
-try:
-    with open(CONFIG_PATH, "r") as f:
-        global_config = json.load(f)
-except Exception as e:
-    print(f"Error loading config.json: {e}")
-    global_config = {"ai_settings": {"variance_threshold": 2.0}, "networking": {"websocket_port": 8765, "http_port": 8000}}
+from config_loader import CONFIG as global_config
 
 # --- CONFIGURATION ---
-THRESHOLD = global_config["ai_settings"]["variance_threshold"]
-WS_PORT = global_config["networking"]["websocket_port"]
-HTTP_PORT = global_config["networking"]["http_port"]
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "fall_detection_model.pkl")
+THRESHOLD = float(global_config["ai_settings"]["variance_threshold"])
+HTTP_PORT = int(global_config["networking"]["http_port"])  # Unified HTTP + WebSocket port
+UDP_PORT = int(global_config["networking"]["udp_receiver_port"])
+CONTROL_TOKEN = global_config["security"].get("control_token", "") or ""
+
+# Dashboard commands that only read state. Everything else changes the system
+# (thresholds, readers, simulation, test alerts) and needs the control token
+# when one is configured.
+READ_ONLY_COMMANDS = {"get_config", "get_nodes"}
+
+MAX_THRESHOLD = 1000.0
+
+
+def parse_threshold(value):
+    """Return a finite, positive threshold or raise ValueError."""
+    t = float(value)
+    if not math.isfinite(t) or t <= 0 or t > MAX_THRESHOLD:
+        raise ValueError(f"threshold out of range: {value!r}")
+    return t
+
+
+def token_matches(supplied):
+    """True when no control token is configured, or the supplied one matches."""
+    if not CONTROL_TOKEN:
+        return True
+    if not supplied:
+        return False
+    return hmac.compare_digest(str(supplied).encode(), CONTROL_TOKEN.encode())
+
+
+_UNSAFE_NAME_CHARS = set('<>"\'`\\&')
+
+
+def sanitize_location(name, max_len=48):
+    """Node names come from the network and end up inside dashboard HTML and
+    onclick handlers, so drop quotes/markup/control characters. A name like
+    "Ohm's Room" would otherwise break the dashboard's threshold slider."""
+    cleaned = "".join(c for c in str(name) if c.isprintable() and c not in _UNSAFE_NAME_CHARS)
+    cleaned = cleaned.strip()[:max_len]
+    return cleaned or "Unknown"
+
+
+def split_path(path):
+    """Split '/ws?token=x' into ('/ws', {'token': 'x'})."""
+    parts = urlsplit(path)
+    query = {k: v[0] for k, v in parse_qs(parts.query).items() if v}
+    return parts.path or "/", query
 
 class NodeState:
     def __init__(self):
@@ -56,13 +98,15 @@ class NodeState:
         self.sim_fall_alert_pending = False
 
 class HeadlessBrain:
-    def __init__(self, port, threshold=2.0):
+    def __init__(self, port=None, threshold=THRESHOLD):
         self.readers = {} # port_name -> Reader instance
-        self.udp_port = 5000
+        self.udp_port = UDP_PORT
         self.tx_mode = "TX_DEDICATED" # 'TX_DEDICATED' or 'TX_ROUTER'
         self.threshold = threshold
         
         self.nodes = {} # Dictionary mapping location_name -> NodeState
+        # Reader threads add nodes while the asyncio loop iterates/deletes them.
+        self.nodes_lock = threading.Lock()
         self.alarm_receivers = {}  # ip -> {"ip", "last_seen"}
 
         # Start heartbeat listener for alarm receivers (UDP port 5002)
@@ -70,7 +114,7 @@ class HeadlessBrain:
         
         self.ml_model = None
         try:
-            self.ml_model = joblib.load("fall_detection_model.pkl")
+            self.ml_model = joblib.load(MODEL_PATH)
             print("[INFO] Loaded Fall Detection ML model successfully!")
         except Exception as e:
             print(f"[WARNING] Could not load ML model: {e}")
@@ -157,6 +201,8 @@ class HeadlessBrain:
 
     # --- WEBSOCKET SERVER LOGIC ---
     async def ws_handler(self, websocket):
+        _, query = split_path(getattr(websocket, "path", "") or "")
+        authorized = token_matches(query.get("token"))
         self.connected_clients.add(websocket)
         print(f"[IOT] New Web Dashboard Connected! ({len(self.connected_clients)} total)")
         
@@ -167,9 +213,18 @@ class HeadlessBrain:
             async for message in websocket:
                 try:
                     data = json.loads(message)
+                    if not isinstance(data, dict):
+                        continue
+                    command = data.get("command")
+                    if command not in READ_ONLY_COMMANDS and not (authorized or token_matches(data.get("token"))):
+                        print(f"[IOT] Rejected unauthorized command: {command}")
+                        await websocket.send(json.dumps({"type": "error", "error": "unauthorized", "command": command}))
+                        continue
                     if data.get("command") == "simulate_state":
                         node_id = data.get("node_id")
                         state   = int(data.get("state", 0))
+                        if state not in (0, 1, 2):
+                            raise ValueError(f"invalid state {state}")
                         if node_id and node_id in self.nodes:
                             node = self.nodes[node_id]
                             # Always lock — STATIC/MOVEMENT/FALL all hold until release_sim
@@ -198,11 +253,12 @@ class HeadlessBrain:
                         threading.Thread(target=send_alarm_broadcast, args=(node_id,), daemon=True).start()
 
                     elif data.get("command") == "get_nodes":
-                        nodes_list = list(self.nodes.keys())
+                        with self.nodes_lock:
+                            nodes_list = list(self.nodes.keys())
                         await websocket.send(json.dumps({"type": "nodes_list", "nodes": nodes_list}))
 
                     elif data.get("command") == "set_threshold":
-                        new_thresh = float(data.get("value", 2.0))
+                        new_thresh = parse_threshold(data.get("value", THRESHOLD))
                         node_id = data.get("node_id")
                         if node_id and node_id in self.nodes:
                             self.nodes[node_id].threshold = new_thresh
@@ -236,7 +292,9 @@ class HeadlessBrain:
                         await self.broadcast_config()
                         
                     elif data.get("command") == "connect_udp":
-                        port = int(data.get("port", 5000))
+                        port = int(data.get("port", UDP_PORT))
+                        if not 1 <= port <= 65535:
+                            raise ValueError(f"invalid UDP port {port}")
                         key = f"UDP_{port}"
                         if key not in self.readers:
                             reader = UDPReader(port, self.data_received)
@@ -250,7 +308,7 @@ class HeadlessBrain:
                         await self.broadcast_config()
                         
                     elif data.get("command") == "disconnect_udp":
-                        port = int(data.get("port", 5000))
+                        port = int(data.get("port", UDP_PORT))
                         key = f"UDP_{port}"
                         if key in self.readers:
                             self.readers[key].disconnect()
@@ -263,6 +321,8 @@ class HeadlessBrain:
                         
                     elif data.get("command") == "set_tx_mode":
                         new_tx_mode = data.get("tx_mode", "TX_DEDICATED")
+                        if new_tx_mode not in ("TX_DEDICATED", "TX_ROUTER"):
+                            raise ValueError(f"invalid tx_mode {new_tx_mode!r}")
                         self.tx_mode = new_tx_mode
                         print(f"[IOT] Switching TX Mode to {self.tx_mode}...")
                         for r in self.readers.values():
@@ -274,7 +334,8 @@ class HeadlessBrain:
                 except Exception as e:
                     print(f"[IOT] Error parsing command: {e}")
         finally:
-            self.connected_clients.remove(websocket)
+            # broadcast_ws() may already have dropped this socket as dead
+            self.connected_clients.discard(websocket)
             print(f"[IOT] Web Dashboard Disconnected. ({len(self.connected_clients)} remaining)")
 
     async def broadcast_ws(self, payload):
@@ -282,7 +343,7 @@ class HeadlessBrain:
             message = json.dumps(payload)
             # Use try/except to handle any disconnected clients
             dead = set()
-            for ws in self.connected_clients:
+            for ws in list(self.connected_clients):
                 try:
                     await ws.send(message)
                 except Exception:
@@ -306,7 +367,8 @@ class HeadlessBrain:
     # --- UNIFIED HTTP & WEBSOCKET SERVER LOGIC ---
     async def process_request(self, path, request_headers):
         import http
-        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
+        dashboard_dir = os.path.join(BASE_DIR, 'dashboard')
+        path, query = split_path(path)
         if path == "/" or path == "/index.html":
             index_path = os.path.join(dashboard_dir, 'index.html')
             try:
@@ -323,7 +385,9 @@ class HeadlessBrain:
                 return (http.HTTPStatus.OK, [("Content-Type", "text/html; charset=utf-8"), ("Cache-Control", "no-cache")], content)
             except Exception as e:
                 return (http.HTTPStatus.INTERNAL_SERVER_ERROR, [], str(e).encode())
-        elif path == "/silence" or path.startswith("/silence"):
+        elif path == "/silence":
+            if not token_matches(query.get("token")):
+                return (http.HTTPStatus.FORBIDDEN, [("Content-Type", "text/plain; charset=utf-8")], b"Forbidden: missing or wrong token")
             # Trigger UDP silence broadcast to stop ESP32 alarm sirens
             threading.Thread(target=send_silence_broadcast, daemon=True).start()
             html_content = """<!DOCTYPE html>
@@ -414,17 +478,19 @@ class HeadlessBrain:
             current_time = time.time()
             
             # 1. Clean up stale nodes (no data for 5 seconds)
-            stale_nodes = [loc for loc, node in self.nodes.items() if current_time - node.last_seen > 5.0 and not node.sim_locked]
-            for loc in stale_nodes:
-                print(f"[IOT] Node disconnected/timed out: {loc}")
-                del self.nodes[loc]
+            with self.nodes_lock:
+                stale_nodes = [loc for loc, node in self.nodes.items() if current_time - node.last_seen > 5.0 and not node.sim_locked]
+                for loc in stale_nodes:
+                    print(f"[IOT] Node disconnected/timed out: {loc}")
+                    del self.nodes[loc]
+                nodes_snapshot = list(self.nodes.items())
                 
             # 2. Build payload of ALL active nodes
             if self.connected_clients:
                 import random
                 import math
                 payload = {"type": "data", "nodes": {}}
-                for loc, node in self.nodes.items():
+                for loc, node in nodes_snapshot:
                     if node.sim_locked:
                         node.last_seen = current_time # Keep alive
                         T = node.threshold
@@ -504,14 +570,18 @@ class HeadlessBrain:
 
     async def _ws_main(self):
         import http
-        async with websockets.serve(self.ws_handler, "0.0.0.0", 8000, process_request=self.process_request):
+        async with websockets.serve(self.ws_handler, "0.0.0.0", HTTP_PORT, process_request=self.process_request):
             # Run broadcast loop alongside the WebSocket server
             await self._broadcast_loop()
 
     def start_ws_server(self):
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        print("[INFO] Unified Web & WebSocket Server running on port 8000")
+        print(f"[INFO] Unified Web & WebSocket Server running on port {HTTP_PORT}")
+        if CONTROL_TOKEN:
+            print("[INFO] Control token is set: dashboard controls and /silence need ?token=...")
+        else:
+            print("[WARNING] No security.control_token set: anyone who can reach the dashboard can change settings")
         try:
             self.loop.run_until_complete(self._ws_main())
         except asyncio.CancelledError:
@@ -536,6 +606,7 @@ class HeadlessBrain:
 
     # --- CSI DATA PROCESSING ---
     def data_received(self, amplitudes, rssi, location_name="Unknown", reader_id=None):
+        location_name = sanitize_location(location_name)
         if reader_id:
             # Prefix location_name with port/reader ID if not already there, 
             # so multiple ESP32s with the exact same Arduino string don't merge/sum their data blocks!
@@ -544,9 +615,12 @@ class HeadlessBrain:
                 
         current_time = time.time()
         
-        if location_name not in self.nodes:
-            self.nodes[location_name] = NodeState()
-        node = self.nodes[location_name]
+        with self.nodes_lock:
+            node = self.nodes.get(location_name)
+            if node is None:
+                node = NodeState()
+                node.threshold = self.threshold
+                self.nodes[location_name] = node
         node.last_seen = current_time
         
         # --- PHASE 4: SOS BUTTON INTERRUPT ---
@@ -627,16 +701,11 @@ if __name__ == "__main__":
     print(" SENTRY: IoT Web Server Processor      ")
     print("=======================================")
     
+    # Serial ports are optional: wireless nodes stream over UDP, and USB nodes
+    # are connected from the dashboard. Do not exit when no USB device exists.
     ports = serial.tools.list_ports.comports()
     if not ports:
-        print("[ERROR] No serial ports found. Is the ESP32 plugged in?")
-        sys.exit(1)
-        
-    target_port = ports[0].device
-    for p in ports:
-        if "USB" in p.device:
-            target_port = p.device
-            break
-            
-    brain = HeadlessBrain(port=target_port, threshold=2.0)
+        print("[INFO] No serial ports found. Running in Wi-Fi (UDP) mode only.")
+
+    brain = HeadlessBrain(threshold=THRESHOLD)
     brain.start()

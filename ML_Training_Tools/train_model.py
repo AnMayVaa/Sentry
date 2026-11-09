@@ -51,6 +51,11 @@ def create_dataset(file_path, label, is_fall=False):
         print(f"Warning: {file_path} not found.")
         return [], []
         
+    # NOTE: rows have 53 values but the header names 52 subcarriers, so pandas
+    # uses the first column as the index and every column shifts by one. The
+    # shipped model was trained this way, i.e. on amplitudes[2:28] + amplitudes[38:64].
+    # Phase4_Multi_Node/ml_engine.select_subcarriers() mirrors that for live data.
+    # If you fix this parsing, update select_subcarriers() and retrain together.
     df = pd.read_csv(file_path)
     # Drop timestamp and rssi columns, keep only sub_1 to sub_52
     sub_cols = [col for col in df.columns if col.startswith('sub_')]

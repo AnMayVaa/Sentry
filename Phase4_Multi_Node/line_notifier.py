@@ -1,25 +1,29 @@
 import requests
 import json
 import datetime
-import os
-import sys
+from urllib.parse import quote
 
-# Load config from root directory
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
-try:
-    with open(CONFIG_PATH, "r") as f:
-        config = json.load(f)
-        LINE_CHANNEL_ACCESS_TOKEN = config["notifications"]["line_channel_access_token"]
-        LINE_USER_ID = config["notifications"]["line_user_id"]
-except Exception as e:
-    print(f"Failed to load config.json: {e}")
-    LINE_CHANNEL_ACCESS_TOKEN = "YOUR_CHANNEL_ACCESS_TOKEN"
-    LINE_USER_ID = "YOUR_USER_ID"
+from config_loader import CONFIG, is_configured
+
+LINE_CHANNEL_ACCESS_TOKEN = CONFIG["notifications"].get("line_channel_access_token", "")
+LINE_USER_ID = CONFIG["notifications"].get("line_user_id", "")
+PUBLIC_URL = CONFIG["notifications"].get("public_url", "").rstrip("/")
+CONTROL_TOKEN = CONFIG["security"].get("control_token", "")
+LINE_TIMEOUT_S = 10
+
+
+def silence_url():
+    url = f"{PUBLIC_URL}/silence"
+    if CONTROL_TOKEN:
+        url += f"?token={quote(CONTROL_TOKEN)}"
+    return url
+
 
 def send_fall_alert(location_name="Unknown Location"):
     print(f"[LINE_NOTIFIER] Attempting to send alert for {location_name}...", flush=True)
-    if LINE_CHANNEL_ACCESS_TOKEN == "YOUR_CHANNEL_ACCESS_TOKEN":
-        print("[LINE_NOTIFIER] LINE Alert Disabled: Please configure your tokens in line_notifier.py", flush=True)
+    if not (is_configured(LINE_CHANNEL_ACCESS_TOKEN) and is_configured(LINE_USER_ID)):
+        print("[LINE_NOTIFIER] LINE Alert Disabled: set line_channel_access_token and line_user_id "
+              "in config.local.json (or SENTRY_LINE_TOKEN / SENTRY_LINE_USER_ID)", flush=True)
         return False
         
     url = "https://api.line.me/v2/bot/message/push"
@@ -124,7 +128,7 @@ def send_fall_alert(location_name="Unknown Location"):
                         "action": {
                             "type": "uri",
                             "label": "🔕 ปิดเสียงไซเรน (Silence Alarm)",
-                            "uri": "https://csi.ohmpatumwan.com/silence"
+                            "uri": silence_url()
                         },
                         "style": "secondary"
                     }
@@ -139,7 +143,7 @@ def send_fall_alert(location_name="Unknown Location"):
     }
     
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=LINE_TIMEOUT_S)
         if response.status_code == 200:
             print("[LINE_NOTIFIER] Successfully sent LINE Flex Message!", flush=True)
             return True
