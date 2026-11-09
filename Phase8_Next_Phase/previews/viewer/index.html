@@ -1,0 +1,246 @@
+<title>Fall Detector Enclosures</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a workbench. Big 3D stage on the left, a spec sheet on the right; stacks on phones. */
+:root {
+  --bg: #eef0f2; --panel: #ffffff; --ink: #1b2026; --muted: #5c6670; --line: #d5dae0;
+  --accent: #d7262e; --stage: #e3e7eb; --chip: #f3f5f7;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161b; --panel: #1a2027; --ink: #e8ecf0; --muted: #98a3ae; --line: #2c343d;
+  --accent: #ff5a5f; --stage: #0d1115; --chip: #222a33; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161b; --panel: #1a2027; --ink: #e8ecf0; --muted: #98a3ae; --line: #2c343d;
+  --accent: #ff5a5f; --stage: #0d1115; --chip: #222a33; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--display); }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 16px; }
+header h1 { font-size: clamp(22px, 3vw, 30px); font-weight: 800; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; line-height: 1.5; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.stage { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  aspect-ratio: 4 / 3; max-width: 100%; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.hint { position: absolute; left: 12px; bottom: 10px; font: 12px var(--mono); color: var(--muted); pointer-events: none; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button { font: 600 14px var(--display); border: 0; background: transparent; color: var(--ink); padding: 9px 14px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg button:focus-visible, .tog input:focus-visible + span, input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+input[type=range] { accent-color: var(--accent); width: 140px; }
+.tog { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.tog input { accent-color: var(--accent); width: 16px; height: 16px; }
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+aside h2 { font-size: 18px; margin: 0; }
+.kicker { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.desc { color: var(--muted); line-height: 1.5; margin: 0; font-size: 14px; }
+dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 14px; }
+dt { color: var(--muted); }
+dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+ul.parts { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 14px; }
+ul.parts li { display: flex; gap: 8px; align-items: center; }
+.sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
+ul.parts .f { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+.note { background: var(--chip); border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.5; color: var(--ink); }
+.err { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Fall Detector Enclosures</h1>
+    <p>The exact print files for the RX node, the alert station and the desk stand, with stand-in electronics placed where they sit inside. Drag to turn, scroll or pinch to zoom, and slide <em>Explode</em> to open the box.</p>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="Model">
+      <button id="m-rx" data-model="rx" aria-pressed="true">RX node</button>
+      <button id="m-as" data-model="as" aria-pressed="false">Alert station</button>
+      <button id="m-stand" data-model="stand" aria-pressed="false">On desk stand</button>
+    </div>
+    <label class="ctl" for="explode">Explode <input id="explode" type="range" min="0" max="40" step="1" value="0"></label>
+    <label class="tog"><input id="t-lid" type="checkbox" checked><span>Lid</span></label>
+    <label class="tog"><input id="t-elec" type="checkbox" checked><span>Electronics</span></label>
+    <label class="tog"><input id="t-spin" type="checkbox"><span>Spin</span></label>
+  </div>
+
+  <div class="main">
+    <div class="stage" id="stage"><div class="hint">drag · zoom · right-drag to pan</div></div>
+    <aside id="info"></aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="models.js"></script>
+<script>
+(function () {
+  const stage = document.getElementById('stage');
+  if (!window.THREE || !window.MODELS) {
+    stage.insertAdjacentHTML('beforeend', '<div class="err">The 3D viewer could not load. Reload the page to try again.</div>');
+    return;
+  }
+  // ---- geometry from the packed STL data (mm, Z up) ----
+  function b64(s, Type) { const bin = atob(s); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Type(u.buffer); }
+  const geoCache = {};
+  function geo(key) {
+    if (geoCache[key]) return geoCache[key];
+    const d = MODELS[key]; let g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(b64(d.v, Float32Array), 3));
+    g.setIndex(new THREE.BufferAttribute(b64(d.f, Uint32Array), 1));
+    g = g.toNonIndexed(); g.computeVertexNormals();
+    return (geoCache[key] = g);
+  }
+  const C = {
+    base: 0x2b2f36, lid: 0xeceae5, pcb: 0x1f6f3f, buzzer: 0x151515, sw: 0x2a2a2a, cap: 0xd7262e,
+    backer: 0x8a8f98, led: 0xff3b30, dome: 0xfff4f2, stand: 0x3a6ea5, ant: 0x1a1a1a
+  };
+  function mat(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.55, metalness: 0.05 }, o || {})); }
+  function mesh(key, color, o) { return new THREE.Mesh(geo(key), mat(color, o)); }
+
+  // ---- constants from the OpenSCAD model ----
+  const OUT = 72.8, BASE_H = 33.4, LID_T = 2.4, WALL = 2.4, BOARD_CY = 8.5 + 29.1 / 2;
+
+  // build one device in its own coordinates; parts tagged for explode / toggles
+  function device(kind) {
+    const g = new THREE.Group(); const p = kind === 'rx' ? 'rx_node_' : 'alert_station_';
+    const add = (m, lift, tag) => { m.userData = { lift, tag, z0: m.position.z }; g.add(m); return m; };
+    add(mesh(p + 'base', C.base), 0, 'base');
+    add(mesh(p + 'dummy_board', C.pcb), 1, 'elec');
+    add(mesh(p + 'dummy_buzzer', C.buzzer), 1.5, 'elec');
+    add(mesh(p + 'dummy_switch', C.sw), 1.5, 'elec');
+    add(mesh(p + 'dummy_backer', C.backer), 1.5, 'elec');
+    add(mesh(p + 'dummy_led', C.led, { emissive: 0x550000 }), 1.5, 'elec');
+    add(mesh(p + 'lid_asm', C.lid), 2, 'lid');
+    add(mesh(p + 'dummy_cap', C.cap), 2, 'lid');
+    if (kind === 'as') {
+      const d = mesh('dome', C.dome, { transparent: true, opacity: 0.55, roughness: 0.3 });
+      d.position.set(WALL + 33, WALL + 54, BASE_H + LID_T - 1);
+      add(d, 2.6, 'lid');
+    } else {
+      // 2.4 GHz antenna on the SMA bulkhead (stand-in)
+      const a = new THREE.Group();
+      const elbow = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 10, 24), mat(C.ant));
+      elbow.rotation.z = Math.PI / 2; elbow.position.set(5, 0, 0); a.add(elbow);
+      const whip = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 70, 24), mat(C.ant));
+      whip.rotation.x = Math.PI / 2; whip.position.set(10, 0, 35); a.add(whip);
+      a.position.set(OUT, WALL + BOARD_CY, 14);
+      add(a, 0.5, 'elec');
+    }
+    return g;
+  }
+
+  // ---- scene ----
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  stage.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, 4 / 3, 1, 3000);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8090a0, 0.85));
+  const key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(150, -200, 300); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.35); rim.position.set(-200, 150, 120); scene.add(rim);
+  const world = new THREE.Group(); world.rotation.x = -Math.PI / 2; scene.add(world); // Z-up models into Y-up scene
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  let current = null, kindNow = 'rx';
+  function build(kind) {
+    if (current) world.remove(current);
+    const root = new THREE.Group();
+    if (kind === 'stand') {
+      // stand printed on its side: show it upright, with the alert station resting in it
+      const s = mesh('stand', C.stand); s.userData = { lift: 0, tag: 'stand' };
+      const holder = new THREE.Group(); holder.rotation.x = Math.PI / 2; root.add(holder);
+      holder.add(s);
+      const dev = device('as');
+      // device (x,y,z) -> stand frame (w=z, t=x, Z=y), tilt 20 deg, lift 5.2
+      const P = new THREE.Matrix4().set(0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+      const R = new THREE.Matrix4().makeRotationZ(20 * Math.PI / 180);
+      const T = new THREE.Matrix4().makeTranslation(0, 5.2, 0);
+      const D = new THREE.Matrix4().makeTranslation(0, 0, 0.4);
+      const wrap = new THREE.Group(); wrap.matrixAutoUpdate = false;
+      wrap.matrix.copy(T.multiply(R).multiply(P).multiply(D)); wrap.add(dev); holder.add(wrap);
+      root.userData.device = dev;
+    } else {
+      const dev = device(kind); root.add(dev); root.userData.device = dev;
+    }
+    world.add(root); current = root; kindNow = kind;
+    // frame the camera for the fully exploded view so opening the box never leaves the screen
+    const ex = document.getElementById('explode'), keep = ex.value;
+    ex.value = ex.max; applyState(); frame(); ex.value = keep; applyState(); renderInfo(kind);
+  }
+  function applyState() {
+    const e = +document.getElementById('explode').value;
+    const lidOn = document.getElementById('t-lid').checked, elecOn = document.getElementById('t-elec').checked;
+    current.traverse(o => {
+      if (!o.userData || o.userData.lift === undefined) return;
+      if (o.userData.z0 === undefined) o.userData.z0 = o.position.z;
+      o.position.z = o.userData.z0 + (kindNow === 'stand' ? 0 : e * o.userData.lift);
+      o.visible = o.userData.tag === 'lid' ? lidOn : o.userData.tag === 'elec' ? elecOn : true;
+    });
+  }
+  function frame() {
+    const box = new THREE.Box3().setFromObject(current); const c = box.getCenter(new THREE.Vector3());
+    const r = box.getSize(new THREE.Vector3()).length() / 2;
+    controls.target.copy(c);
+    const dir = new THREE.Vector3(0.9, 0.75, 1.1).normalize();
+    camera.position.copy(c).addScaledVector(dir, r * 2.6); camera.near = r / 50; camera.far = r * 50;
+    camera.updateProjectionMatrix(); controls.update();
+  }
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage); resize();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  (function loop() {
+    if (document.getElementById('t-spin').checked && !reduce) current.rotation.z += 0.004;
+    controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop);
+  })();
+
+  // ---- spec sheet ----
+  const INFO = {
+    rx: { kicker: 'In the room being watched', name: 'RX node',
+      desc: 'Senses Wi-Fi CSI for falls and carries the SOS button. Hold 2 s for SOS; press once to silence its siren.',
+      dims: [['Box', '72.8 × 72.8 × 35.8 mm'], ['Board', 'ESP32-WROOM-32U, 52 × 28.5 mm'], ['Antenna', '2.4 GHz on SMA, far end'], ['Power', 'micro-USB, chamfered opening'], ['Mount', 'table, wall keyholes, stand, tape']],
+      parts: [['rx_node_base.stl', C.base, '1'], ['rx_node_lid.stl', C.lid, '1'], ['button_backer_bar.stl', C.backer, '1'], ['button_shim_1mm.stl', C.backer, 'if needed']],
+      note: 'Lid label: HOLD 2s = SOS. No brand name on any part.' },
+    as: { kicker: 'Where the caregiver is', name: 'Alert station',
+      desc: 'Rings with every other station on a fall (fast beeps) or an SOS (Morse ··· ––– ···). Press to silence; hold 2 s to self-test.',
+      dims: [['Box', '72.8 × 72.8 × 35.8 mm'], ['Light', '5 mm LED under a 20 mm dome'], ['Antenna', 'none outside: keep the small one inside'], ['Power', 'micro-USB'], ['Mount', 'table, wall keyholes, stand, tape']],
+      parts: [['alert_station_base.stl', C.base, '1'], ['alert_station_lid.stl', C.lid, '1'], ['alert_station_light_dome.stl', C.dome, '1, white/clear'], ['button_backer_bar.stl', C.backer, '1']],
+      note: 'A WROOM-32U board has no built-in antenna, so plug its small antenna in inside the box. Want it outside? Print alert_station_base_antenna_hole.stl.' },
+    stand: { kicker: 'Fits both devices', name: 'Desk stand',
+      desc: 'Holds either box leaning back 20°, USB end down. A notch lets the USB plug and cable pass through.',
+      dims: [['Size', '71.4 × 59.7 × 72.8 mm'], ['Tilt', '20°'], ['Print', 'on its side, no supports'], ['Material', '≈ 80 g if solid, less at 20 % infill']],
+      parts: [['desk_stand.stl', C.stand, '1 per device']],
+      note: 'Line the device sides up with the stand sides so the USB plug drops into the notch.' }
+  };
+  const hex = c => '#' + c.toString(16).padStart(6, '0');
+  function renderInfo(kind) {
+    const i = INFO[kind];
+    document.getElementById('info').innerHTML =
+      `<div><div class="kicker">${i.kicker}</div><h2>${i.name}</h2></div>
+       <p class="desc">${i.desc}</p>
+       <dl>${i.dims.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+       <div><div class="kicker" style="margin-bottom:8px">Print files</div>
+       <ul class="parts">${i.parts.map(([n, c, q]) => `<li><span class="sw" style="background:${hex(c)}"></span><span>${n}</span><span class="f">${q}</span></li>`).join('')}</ul></div>
+       <div class="note">${i.note}</div>
+       <div class="note">PLA or PETG · 0.2 mm layers · 3 walls · 20 % infill · no supports. All parts fit a 220 × 220 mm bed.</div>`;
+  }
+
+  // ---- controls ----
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    build(b.dataset.model);
+  }));
+  ['explode', 't-lid', 't-elec'].forEach(id => document.getElementById(id).addEventListener('input', applyState));
+  build('rx');
+})();
+</script>

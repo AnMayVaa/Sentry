@@ -5,6 +5,21 @@ import numpy as np
 
 from ml_engine import select_subcarriers
 
+
+def parse_sos_line(line):
+    """Return the location from an SOS line, or None if it is not one.
+
+    Nodes send "SOS_ALERT,<location>" to the Pi (Phase 4/7/8 format); the
+    alert-station format "SOS_ALERT:<location>" is accepted too.
+    """
+    if not line.startswith("SOS_ALERT"):
+        return None
+    rest = line[len("SOS_ALERT"):]
+    if rest[:1] in (",", ":"):
+        rest = rest[1:]
+    rest = rest.split(",")[0].strip()
+    return rest or "Unknown"
+
 class UDPReader:
     def __init__(self, port=5000, data_callback=None):
         self.port = port
@@ -70,9 +85,8 @@ class UDPReader:
                     if not line:
                         continue
                         
-                    if line.startswith("SOS_ALERT"):
-                        parts = line.split(',')
-                        location_name = parts[1] if len(parts) > 1 else "Unknown"
+                    location_name = parse_sos_line(line)
+                    if location_name is not None:
                         if self.data_callback:
                             self.data_callback("SOS", 0, location_name, reader_id=addr[0])
                         continue

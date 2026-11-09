@@ -21,8 +21,8 @@ import serial.tools.list_ports
 from serial_reader import SerialReader
 from udp_reader import UDPReader
 from ml_engine import extract_features, extract_features_np
-from line_notifier import send_fall_alert
-from alarm_broadcaster import send_alarm_broadcast, send_silence_broadcast
+from line_notifier import send_fall_alert, send_sos_alert
+from alarm_broadcaster import send_alarm_broadcast, send_silence_broadcast, send_sos_broadcast
 
 from config_loader import CONFIG as global_config
 
@@ -40,6 +40,12 @@ CONTROL_TOKEN = global_config["security"].get("control_token", "") or ""
 READ_ONLY_COMMANDS = {"get_config", "get_nodes"}
 
 MAX_THRESHOLD = 1000.0
+
+# A node sends each SOS a few times (UDP can drop packets). Copies that arrive
+# within this window count as the same SOS. A new hold after it is a new SOS.
+SOS_DEDUPE_S = 15.0
+# How long the dashboard shows "SOS PRESSED" on that node's card.
+SOS_SHOW_S = 30.0
 
 
 def parse_threshold(value):
@@ -86,6 +92,7 @@ class NodeState:
         self._processing = False
         self.potential_fall_time = 0
         self.last_line_alert_time = 0
+        self.last_sos_time = 0.0
         self.current_state = 0
         self.sim_target_state = 0
         self.last_variance = 0.0
@@ -561,6 +568,7 @@ class HeadlessBrain:
                         "state": int(node.current_state),
                         "variance": round(float(node.last_variance), 2),
                         "threshold": float(node.threshold),
+                        "sos": bool(node.last_sos_time and current_time - node.last_sos_time < SOS_SHOW_S),
                         "amplitudes": [round(float(a), 1) for a in amps]
                     }
                 # broadcast once per frame, outside the node loop
@@ -623,13 +631,14 @@ class HeadlessBrain:
                 self.nodes[location_name] = node
         node.last_seen = current_time
         
-        # --- PHASE 4: SOS BUTTON INTERRUPT ---
+        # --- SOS BUTTON (Phase 8: hold 2 s on the node) ---
+        # Uses its own timer so an SOS never blocks a later fall alert.
         if isinstance(amplitudes, str) and amplitudes == "SOS":
-            print(f"[{time.strftime('%H:%M:%S')}] SOS BUTTON PRESSED IN {location_name}!")
-            if current_time - node.last_line_alert_time > 60.0:
-                threading.Thread(target=send_fall_alert, args=(location_name,), daemon=True).start()
-                threading.Thread(target=send_alarm_broadcast, args=(location_name,), daemon=True).start()
-                node.last_line_alert_time = current_time
+            if current_time - node.last_sos_time > SOS_DEDUPE_S:
+                node.last_sos_time = current_time
+                print(f"[{time.strftime('%H:%M:%S')}] SOS BUTTON PRESSED IN {location_name}!")
+                threading.Thread(target=send_sos_alert, args=(location_name,), daemon=True).start()
+                threading.Thread(target=send_sos_broadcast, args=(location_name,), daemon=True).start()
             return
 
         # Drop frame if previous one is still processing (prevents backlog)

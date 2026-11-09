@@ -30,3 +30,8 @@ To maximize the line of sight for body-level detection and capture multi-path re
 Once the hardware is positioned and powered:
 1. Note the COM ports (on Windows) or `/dev/ttyUSBx` paths (on Linux/Mac) that appear when you plug the boards into your PC for flashing.
 2. Proceed to compile and flash the `tx_node` firmware to the wall-powered ESP32, and the `rx_node` firmware to the PC-connected ESP32.
+
+## 5. Phase 8: Enclosures, SOS Button and Alert Station
+The RX node can now live in a 3D-printed case with a buzzer, LED and an SOS button, and caregivers can have their own Alert Station.
+Wiring (LED 220 Ω on GPIO 2, active buzzer on GPIO 4, button on GPIO 17), which antenna works with which ESP32, power-bank tips, print settings and assembly are in
+[Phase8_Alert_Station_SOS_Enclosures.md](Phase8_Alert_Station_SOS_Enclosures.md).
