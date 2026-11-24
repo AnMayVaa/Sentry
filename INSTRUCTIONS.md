@@ -18,11 +18,11 @@ The core logic resides in the `Phase4_Multi_Node` directory:
 - **`serial_reader.py`**: Parses raw CSI integers from the ESP32 via physical USB cable.
 - **`udp_reader.py`**: Parses raw CSI integers wirelessly over the local Wi-Fi network (Port 5000), broadcasting to `255.255.255.255` for instant auto-discovery of nodes.
 - **`dashboard/index.html`**: The frontend UI. It features a modern Glassmorphism Dark Mode dashboard using `Chart.js`. It dynamically spawns `NodeCard` UI components based on active hardware, scaling infinitely. Includes per-room Sensitivity Threshold sliders and auto-polling Hardware Connection lists.
-- **`line_notifier.py`**: Sends an emergency alert message to a LINE Group via the LINE Notify API when a Fall is confirmed.
+- **`line_notifier.py`**: Sends an emergency alert message to a LINE Group via the LINE Messaging API (an Emergency Card with a 1669 call button and a Silence link) when a Fall is confirmed or the SOS button is held.
 
 ## 4. Edge Server Deployment (Raspberry Pi 5)
-- **Path:** `/home/ohmpatumwan/Sentry/Phase3_Router_as_TX`
-- **Python Environment:** Runs natively or via `venv` on the Pi (`pandas`, `scikit-learn`, `websockets`, `pyserial`).
+- **Path:** `/home/ohmpatumwan/Sentry` (repo root; the service runs `Phase4_Multi_Node/headless_brain.py`). This is the default `SENTRY_PI_PATH` in `deploy.py`.
+- **Python Environment:** Runs natively or via `venv` on the Pi. Install `Phase4_Multi_Node/requirements_headless.txt` and keep its pins: `websockets==12.0` (the code uses the legacy `process_request(path, headers)` API; websockets 13+ returns HTTP 500 on every request) and `scikit-learn==1.8.0` (matches the pickled model).
 - **Systemd Service:** `sentry.service`
   - The backend runs automatically on boot as a Linux background service.
   - Commands to manage: 
@@ -40,7 +40,7 @@ Traffic is routed through a Cloudflare Tunnel named `raspi5` (running on the Pi)
 ## 5.1 Secrets & Access Control
 - `config.json` is tracked in a **public** repo, so it must never hold secrets. Put real values in `config.local.json` next to it (git-ignored; copy `config.local.example.json`). Environment variables `SENTRY_LINE_TOKEN`, `SENTRY_LINE_USER_ID`, `SENTRY_CONTROL_TOKEN` and `SENTRY_PUBLIC_URL` override both files.
 - `security.control_token`: when set, every dashboard command that changes the system (threshold, connect/disconnect, TX mode, simulation, test alerts) and the `/silence` link require it. Open the dashboard once as `https://csi.ohmpatumwan.com/?token=YOUR_TOKEN` and the browser remembers it. The LINE "Silence Alarm" button includes the token automatically. Without a token anyone who finds the URL can disable detection.
-- Firmware Wi-Fi credentials go in `Phase7_Combined_Node/Phase7_Combined_Node/secrets.h` (git-ignored; copy `secrets.example.h`).
+- Firmware Wi-Fi credentials go in `Phase8_Next_Phase/Phase8_RX_Node/secrets.h` and `Phase8_Next_Phase/Phase8_Alert_Station/secrets.h` (git-ignored; copy `secrets.example.h`).
 - `deploy.py` uses your SSH key, never a stored password. Override host/user/path with `SENTRY_PI_HOST`, `SENTRY_PI_USER`, `SENTRY_PI_PATH`.
 
 ## 5.2 Subcarrier Alignment (do not change without retraining)
@@ -51,10 +51,10 @@ The model was trained on `amplitudes[2:28] + amplitudes[38:64]` (52 values) beca
 
 ## 6. Logic & State Machine
 The system tracks three states: `0=STATIC`, `1=MOVEMENT`, `2=FALL`.
-- **Noise Gate / Threshold:** If the rolling variance is below the adjustable Threshold, the system forces a `STATIC` state.
-- **Fall Confirmation:** A fall is only confirmed if the ML model detects an `IMPACT (2)` immediately followed by `STATIC (0)` for 3 seconds. This prevents false positives (e.g., sitting down quickly).
-- **Debounce:** LINE notifications have a 60-second cooldown so they don't spam the user.
-- **SOS Button:** Sending the string `"SOS"` over the serial port triggers an immediate emergency override.
+- **Noise Gate / Threshold (per room):** If the window variance (mean std-dev, `features[0]`) is below the room's Threshold, the prediction is forced to `STATIC (0)`. If it is at or above the Threshold and the model said `STATIC`, it is bumped to `MOVEMENT (1)`. The final prediction is the most common of the last 15.
+- **Fall Confirmation:** While the smoothed prediction is `IMPACT (2)` the state shows `MOVEMENT`. If the smoothed prediction becomes `STATIC (0)` within 3 seconds of the last impact, the state becomes `FALL (2)` and the alert fires right away (it does not wait for 3 seconds of stillness). Walking that stops without an impact never becomes a fall.
+- **Debounce:** Fall alerts (LINE + Alert Station broadcast) have a 60-second cooldown per room.
+- **SOS Button (Phase 8):** Holding the RX node's button for 2 s sends `SOS_ALERT,<location>` to the Pi (UDP 5000) and broadcasts `SOS_ALERT:<location>` to the Alert Stations (UDP 5005), so the stations ring even if the Pi is down. The Pi sends a LINE SOS message; repeat copies within 15 s are treated as one SOS. SOS has its own timer and never blocks a fall alert.
 
 ## 7. Interactive GUI Features
 The HTML Dashboard is not just read-only; it features a Two-Way WebSocket Control Panel:
@@ -63,8 +63,8 @@ The HTML Dashboard is not just read-only; it features a Two-Way WebSocket Contro
 
 ## 8. AI Developer Guidelines
 When making changes:
-1. Always edit the local codebase first (`C:\Antigravity\CSI`).
-2. Commit and push changes to GitHub (`master` branch).
-3. SSH into the Pi (`ssh ohmpatumwan@ohmpatumwan`), run `git pull`, and restart `sentry.service`.
-4. Keep the UI elegant, modern, and dark-mode focused. Ensure JavaScript charting runs smoothly at 30fps.
+1. Edit the local clone on the laptop first.
+2. Run the tests (section 5.3 and `bash Phase8_Next_Phase/firmware_tests/run_tests.sh`), then commit and push to GitHub (`master` branch, usually via a PR).
+3. Deploy with `python deploy.py`, or SSH into the Pi (`ssh ohmpatumwan@ohmpatumwan.local`), run `git pull`, and restart `sentry.service`.
+4. Keep the UI elegant, modern, and dark-mode focused. The server broadcasts at 15 FPS; keep the charts smooth at that rate.
 5. Do not break the `asyncio` WebSocket loop in `headless_brain.py` (we use `websockets.serve` inside an `async def`).

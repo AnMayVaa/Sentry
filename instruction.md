@@ -23,6 +23,7 @@ This file serves to teach future AI agents about the Sentry CSI Fall Detection p
    - If the RX Node sends a UDP packet for every single CSI frame it receives (30Hz), the massive TX overhead will cause it to drop incoming sniffing packets, plummeting the frame rate to 10-15fps.
    - Because the AI calculates Variance over a 45-frame window, 10-15fps stretches the window to 3 seconds, heavily diluting the standard deviation of short movements and causing false negatives.
    - You MUST batch CSI packets (e.g., 5 frames per 1 UDP packet separated by `\n`) to free up airtime for the sniffer antenna.
-4. **The UI Strict Gatekeeper**:
-   - Do NOT use a strict gatekeeper logic (e.g. `if variance < threshold: force STATIC`).
-   - The Sequence State Machine relies on `MOVEMENT (1/2)` transitioning to `STATIC (0)` to detect a fall. If you artificially force `STATIC` when the variance drops, a noisy movement spike will instantly trigger a false-positive FALL. Let the ML model dictate `STATIC` naturally.
+4. **The Sensitivity Gatekeeper (trade-off)**:
+   - `headless_brain.py` (Phase 4) DOES use a per-room gatekeeper: if the window variance is below the room's threshold the prediction is forced to `STATIC (0)`, and above it a `STATIC` prediction is bumped to `MOVEMENT (1)`.
+   - The risk: the fall state machine fires when an `IMPACT (2)` is followed by `STATIC (0)` within 3 s. If the threshold is set too high, a noisy movement spike followed by a forced `STATIC` can look like a fall. Keep the threshold close to the room's real static variance and tune it per room from the dashboard.
+   - The 15-prediction majority vote and the median filter reduce this, and `Phase4_Multi_Node/tests` checks that the shipped model reports no falls on the static and walking recordings. Re-run those tests after changing the gatekeeper or the threshold default.
